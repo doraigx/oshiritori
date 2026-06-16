@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりポータル - 接続バグ修正版</title>
+  <title>しりとりポータル - フル機能完全修正版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -708,21 +708,21 @@
         snapshot.docChanges().forEach(async (change) => {
           if (change.type === "added") {
             const inviteData = change.doc.data();
-            incomingRoomId = inviteData.roomId.toUpperCase();
-            
+            // 【確定強化】変数依存ではなく、ドキュメントの値を確実にキープ
+            const targetInviteRoomId = inviteData.roomId.toUpperCase();
             const currentInviteDocRef = change.doc.ref;
 
-            const roomSnap = await getDoc(doc(db, "rooms", incomingRoomId));
+            const roomSnap = await getDoc(doc(db, "rooms", targetInviteRoomId));
             if (!roomSnap.exists()) return;
 
             inviteMsgText.textContent = `⚔️ ${inviteData.hostName} から対戦申し込みが届きました！`;
-            btnDeclineInvite.setAttribute("data-room-id", incomingRoomId);
             
+            // ─── 【重要修正】コールバック発火時の変数消失をクロージャで完全防衛 ───
             btnAcceptInvite.onclick = async () => {
               inviteZone.classList.add("hidden");
               await deleteDoc(currentInviteDocRef); 
 
-              const roomRef = doc(db, "rooms", incomingRoomId);
+              const roomRef = doc(db, "rooms", targetInviteRoomId);
               const freshSnap = await getDoc(roomRef);
               if (!freshSnap.exists() || freshSnap.data().status === "finished") {
                 return alert("この招待は既に取り消されたか、解散されています。");
@@ -731,12 +731,12 @@
               const rData = freshSnap.data();
               const updatedShingiCounts = { ...rData.shingiCounts, [currentUid]: 0 };
               await updateDoc(roomRef, { players: arrayUnion(currentUid), shingiCounts: updatedShingiCounts, status: "playing" });
-              isFriendMatchMode = true; activeRoomId = incomingRoomId;
+              isFriendMatchMode = true; activeRoomId = targetInviteRoomId;
               roomTitle.textContent = "フレンドマッチ";
               
               btnLeaveRoom.classList.remove("hidden"); 
 
-              showScreen("game"); watchRoom(incomingRoomId);
+              showScreen("game"); watchRoom(targetInviteRoomId);
               incomingRoomId = null;
             };
 
@@ -744,7 +744,7 @@
               inviteZone.classList.add("hidden");
               await deleteDoc(currentInviteDocRef); 
 
-              const roomRef = doc(db, "rooms", incomingRoomId);
+              const roomRef = doc(db, "rooms", targetInviteRoomId);
               if ((await getDoc(roomRef)).exists()) {
                 const mySnap = await getDoc(doc(db, "users", currentUid));
                 const myName = mySnap.exists() ? mySnap.data().username : "相手";
@@ -866,7 +866,6 @@
           
           const myUsedShingi = data.shingiCounts && data.shingiCounts[currentUid] ? data.shingiCounts[currentUid] : 0;
           const shingiRemaining = 10 - myUsedShingi;
-          // 【修正箇所】タイポを完全消去し正常動作へ戻しました
           shingiCounter.textContent = `審議残り: ${shingiRemaining >= 0 ? shingiRemaining : 0}回`;
 
           if (data.currentTurn === currentUid) {
