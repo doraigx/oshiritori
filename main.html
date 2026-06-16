@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりアプリ - 内蔵単語帳版</title>
+  <title>しりとりアプリ - 15秒タイマー版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -81,6 +81,18 @@
     .my-turn { background-color: #e6f4ea; color: #137333; }
     .enemy-turn { background-color: #fce8e6; color: #c5221f; }
     
+    /* タイマーのスタイル */
+    .timer-display {
+      font-size: 24px;
+      font-weight: bold;
+      color: #ea4335;
+      margin-bottom: 15px;
+      background: #fff5f5;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid #fcedeb;
+    }
+
     .action-group {
       display: flex;
       gap: 10px;
@@ -114,20 +126,12 @@
       font-size: 14px;
     }
     .friend-item:last-child { border-bottom: none; }
-
-    #dict-status {
-      font-size: 12px;
-      color: #34a853;
-      font-weight: bold;
-      margin-bottom: 10px;
-    }
   </style>
 </head>
 <body>
 
   <div class="container">
     <h1>しりとりポータル</h1>
-    <div id="dict-status">✅ 単語帳読み込み完了 (内蔵モード)</div>
 
     <div id="login-screen">
       <p>ゲームを始めるにはGoogleアカウントでログインしてください。</p>
@@ -180,6 +184,8 @@
       <div id="game-status" style="font-weight: bold; color: #555;">相手の参加を待っています...</div>
       
       <div id="shiritori-area" class="hidden">
+        <div id="timer-box" class="timer-display">残り時間: 15秒</div>
+
         <div id="turn-indicator" class="turn-badge">読み込み中...</div>
         <div class="word-display" id="current-word">ーーー</div>
         
@@ -243,6 +249,7 @@
     const btnShingi = document.getElementById("btn-shingi");
     const btnRetire = document.getElementById("btn-retire");
     const shingiCounter = document.getElementById("shingi-counter");
+    const timerBox = document.getElementById("timer-box");
 
     const friendMyTag = document.getElementById("friend-my-tag");
     const friendListContainer = document.getElementById("friend-list-container");
@@ -253,22 +260,9 @@
     let unsubscribeRoom = null;
     let unsubscribeFriends = null;
 
-    // ─── 【新設】プログラム内蔵型の単語帳リスト ───
-    // 通信エラーを避けるため、コード内に直接配列を持たせます。自由に追加・編集してください。
-    const wordList = [
-      "しりとり", "りんご", "ごりら", "らっぱ", "ぱんだ", "たぬき", "きつね", "ねこ", "いぬ", "うま",
-      "め", "き", "て", "すいか", "かめ", "めだか", "からす", "すずめ", "みかん", "いちご",
-      "ごま", "まつり", "りす", "すず", "ずぼん", "んじぇな", "くり", "りぼん", "んご", "ひこうき",
-      "きりん", "にんじん", "とまと", "とけい", "いす", "すまほ", "ほん", "のーと", "ぺん", "くま",
-      "まくら", "らいおん", "いるか", "くじら", "らくだ", "たこ", "いか", "かに", "えび", "さかな",
-      "ごりら", "らっぱ", "ぱん", "うちわ", "わに", "にわとり", "りす", "すずむし", "しか", "からす",
-      "すなば", "ばなな", "なす", "すいぎゅう", "うし", "しまうま", "まんとひひ", "ひつじ", "じゃがいも", "もち",
-      "ちーず", "ずわいがに", "にんじゃ", "やま", "かわ", "うみ", "そら", "くも", "あめ", "ゆき",
-      "かぜ", "かみなり", "たいよう", "つき", "ほし", "うちゅう", "ちきゅう", "かいじゅう", "くるま", "でんしゃ",
-      "じてんしゃ", "ひこうき", "ふね", "へりこぷたー", "ばいく", "とらっく", "ばす", "たいや", "えんじん", "らじお"
-    ];
-    // 検索を高速にするためにSet形式に変換
-    const wordDictionary = new Set(wordList);
+    // タイマー管理用変数
+    let countdownInterval = null;
+    let remainingTime = 15;
 
     document.getElementById("btn-login").addEventListener("click", async () => {
       try {
@@ -291,8 +285,6 @@
 
       if (userSnap.exists()) {
         let userData = userSnap.data();
-        
-        // 古いデータ形式の自動修復
         if (!userData.userTag || !userData.friends) {
           const autoTag = userData.userTag || generateUserTag();
           const autoFriends = userData.friends || [];
@@ -300,7 +292,6 @@
           const freshSnap = await getDoc(userRef);
           userData = freshSnap.data();
         }
-
         showScreen("menu");
         userDisplay.textContent = `プレイヤー: ${userData.username}#${userData.userTag}`;
         friendMyTag.textContent = `あなたのタグ: ${userData.username}#${userData.userTag}`;
@@ -380,18 +371,14 @@
     document.getElementById("btn-to-friend").addEventListener("click", () => showScreen("friend"));
     document.getElementById("btn-friend-back").addEventListener("click", () => showScreen("menu"));
 
-    function generateRoomId() {
-      return Math.floor(1000 + Math.random() * 9000).toString();
-    }
-
     document.getElementById("btn-create-room").addEventListener("click", async () => {
       if (!currentUid) return alert("ログインしてください");
-      let roomId = generateRoomId();
+      let roomId = Math.floor(1000 + Math.random() * 9000).toString();
       let roomRef = doc(db, "rooms", roomId);
       try {
         let roomSnap = await getDoc(roomRef);
         while (roomSnap.exists()) {
-          roomId = generateRoomId();
+          roomId = Math.floor(1000 + Math.random() * 9000).toString();
           roomRef = doc(db, "rooms", roomId);
           roomSnap = await getDoc(roomRef);
         }
@@ -440,6 +427,46 @@
       }
     });
 
+    // ─── 新設：ローカルのカウントダウンタイマーを動かす関数 ───
+    function startLocalTimer(roomData) {
+      clearInterval(countdownInterval);
+      remainingTime = 15;
+      timerBox.textContent = `残り時間: ${remainingTime}秒`;
+
+      // 自分のターンのときだけカウントダウンを動かし、時間切れ判定を行う
+      if (roomData.currentTurn === currentUid) {
+        countdownInterval = setInterval(async () => {
+          remainingTime--;
+          timerBox.textContent = `残り時間: ${remainingTime}秒`;
+
+          if (remainingTime <= 0) {
+            clearInterval(countdownInterval);
+            // 15秒経過：ペナルティで時間切れ負け処理を行う
+            const roomRef = doc(db, "rooms", activeRoomId);
+            try {
+              const mySnap = await getDoc(doc(db, "users", currentUid));
+              const myName = mySnap.exists() ? mySnap.data().username : "あなた";
+
+              const enemyUid = roomData.players.find(uid => uid !== currentUid);
+              const enemySnap = await getDoc(doc(db, "users", enemyUid));
+              const enemyName = enemySnap.exists() ? enemySnap.data().username : "対戦相手";
+
+              await updateDoc(roomRef, {
+                status: "finished",
+                winnerName: enemyName,
+                finishReason: `${myName} さんの思考時間が15秒を超えた（時間切れ）ため`
+              });
+            } catch (e) {
+              console.error("タイマー終了処理エラー:", e);
+            }
+          }
+        }, 1000);
+      } else {
+        // 相手のターン中はタイマーのカウントダウンは止め、表示だけ戻す
+        timerBox.textContent = "相手の思考中...";
+      }
+    }
+
     function watchRoom(roomId) {
       if (unsubscribeRoom) unsubscribeRoom();
       unsubscribeRoom = onSnapshot(doc(db, "rooms", roomId), (snapshot) => {
@@ -448,6 +475,7 @@
         if (data.status === "waiting") {
           gameStatus.textContent = "相手の参加を待っています...（このIDを友達に伝えてね）";
           shiritoriArea.classList.add("hidden");
+          clearInterval(countdownInterval);
         } else if (data.status === "playing") {
           gameStatus.textContent = "試合中！";
           shiritoriArea.classList.remove("hidden");
@@ -469,7 +497,12 @@
             btnSendWord.disabled = true;
             btnShingi.disabled = false;
           }
+
+          // ターンが切り替わるか、データに動きがあったらタイマーをリセットして開始
+          startLocalTimer(data);
+
         } else if (data.status === "finished") {
+          clearInterval(countdownInterval); // タイマー停止
           alert(`ゲーム終了！ 勝者: ${data.winnerName} 👑\n理由: ${data.finishReason}`);
           if (unsubscribeRoom) unsubscribeRoom();
           showScreen("menu");
@@ -477,15 +510,13 @@
       });
     }
 
+    // 【変更】ワード送信処理（辞書判定を完全に削除）
     btnSendWord.addEventListener("click", async () => {
       let input = shiritoriInput.value.trim();
       if (!input) return;
       if (!/^[ぁ-んー]+$/.test(input)) return alert("ひらがなだけで入力してください！");
 
-      // 【内蔵単語帳チェック】登録した単語一覧に入っているか
-      if (!wordDictionary.has(input)) {
-        return alert(`「${input}」は単語帳に登録されていません！実在する正しい言葉を入れてください。`);
-      }
+      // 辞書判定ロジックは綺麗に撤廃しました
 
       const roomRef = doc(db, "rooms", activeRoomId);
       try {
@@ -496,6 +527,8 @@
         let lastChar = lastWord.slice(-1);
         if (lastChar === "ー" && lastWord.length > 1) lastChar = lastWord.slice(-2, -1);
         if (lastWord && lastChar !== input.charAt(0)) return alert(`「${lastChar}」から始まる単語を入力してください！`);
+
+        clearInterval(countdownInterval); // 送信に成功したら一旦タイマー停止
 
         if (input.slice(-1) === "ん") {
           const mySnap = await getDoc(doc(db, "users", currentUid));
@@ -534,6 +567,7 @@
 
         if (currentShingiCount >= 10) {
           alert("ペナルティ負けになります！");
+          clearInterval(countdownInterval);
           await updateDoc(roomRef, {
             status: "finished",
             winnerName: enemyName,
@@ -542,6 +576,7 @@
           return;
         }
         if (!confirm(`審議しますか？`)) return;
+        clearInterval(countdownInterval);
         const updatedCounts = { ...roomData.shingiCounts, [currentUid]: currentShingiCount + 1 };
         await updateDoc(roomRef, {
           shingiCounts: updatedCounts,
@@ -556,6 +591,7 @@
 
     btnRetire.addEventListener("click", async () => {
       if (!confirm("リタイアしますか？")) return;
+      clearInterval(countdownInterval);
       const roomRef = doc(db, "rooms", activeRoomId);
       try {
         const roomSnap = await getDoc(roomRef);
@@ -574,6 +610,7 @@
     });
 
     document.getElementById("btn-leave").addEventListener("click", () => {
+      clearInterval(countdownInterval);
       if (unsubscribeRoom) { unsubscribeRoom(); unsubscribeRoom = null; }
       showScreen("menu");
     });
