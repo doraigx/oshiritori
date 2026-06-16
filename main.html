@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりポータル - ログイン維持完全版</title>
+  <title>しりとりポータル - ステータス選択版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -39,7 +39,7 @@
       transition: background 0.2s;
     }
     button:hover { background-color: #357ae8; }
-    input[type="text"] {
+    input[type="text"], select {
       box-sizing: border-box;
       width: 100%;
       padding: 12px;
@@ -47,11 +47,14 @@
       margin-bottom: 16px;
       border: 1px solid #ccc;
       border-radius: 6px;
+      background-color: white;
     }
     hr { border: 0; border-top: 1px solid #eee; margin: 20px 0; }
     .hidden { display: none; }
-    .user-info { margin-bottom: 20px; font-weight: bold; color: #555; text-align: left; display: flex; justify-content: space-between; align-items: center; }
-    
+    .user-info { margin-bottom: 8px; font-weight: bold; color: #555; text-align: left; display: flex; justify-content: space-between; align-items: center; }
+    .status-select-zone { text-align: left; margin-bottom: 20px; font-size: 14px; color: #666; display: flex; align-items: center; gap: 8px; }
+    .status-select-zone select { margin-bottom: 0; width: auto; padding: 6px 10px; font-size: 14px; }
+
     .flex-group {
       display: flex;
       gap: 10px;
@@ -149,8 +152,6 @@
     .lose-text { color: #c5221f; font-weight: bold; }
     
     .btn-small-edit { background-color: #666; font-size: 11px; padding: 4px 8px; width: auto; border-radius: 4px; margin-left: 8px; }
-    
-    /* ローディング表示 */
     #loading-status { font-size: 14px; color: #666; margin-bottom: 10px; }
   </style>
 </head>
@@ -159,10 +160,8 @@
   <div class="container">
     <h1>しりとりポータル</h1>
     
-    <!-- アプリ起動時の状態チェック表示 -->
     <div id="loading-status">接続チェック中...</div>
 
-    <!-- 招待通知エリア -->
     <div id="invite-notification-zone" class="invite-alert-box hidden">
       <span id="invite-msg-text">〇〇から対戦申し込み！</span>
       <div class="action-group" style="margin-top: 10px;">
@@ -171,25 +170,32 @@
       </div>
     </div>
 
-    <!-- 1. 初期ログイン画面 -->
     <div id="login-screen" class="hidden">
       <p>ゲームを始めるにはGoogleアカウントでログインしてください。</p>
       <button id="btn-login">Googleでログイン</button>
     </div>
 
-    <!-- 2. 初回のみ表示されるユーザーネーム登録画面 -->
     <div id="register-screen" class="hidden">
       <p>ユーザーネームを決めてください</p>
       <input type="text" id="username-input" placeholder="例: どーらい">
       <button id="btn-register">登録して次へ</button>
     </div>
 
-    <!-- 3. ログイン完了後のメインメニュー画面 -->
     <div id="menu-screen" class="hidden">
       <div class="user-info">
         <span id="user-display">プレイヤー: ----</span>
         <button id="btn-edit-name" class="btn-small-edit">✏️ 名前変更</button>
       </div>
+
+      <div class="status-select-zone">
+        <span>自分の状態:</span>
+        <select id="select-my-status">
+          <option value="auto">自動 (開いている時のみON)</option>
+          <option value="online">常にオンライン固定</option>
+          <option value="offline">オフライン (隠れる)</option>
+        </select>
+      </div>
+
       <button id="btn-to-friend" style="background-color: #9c27b0; margin-bottom: 15px; padding: 8px;">👥 フレンド画面・オンラインリスト</button>
       <hr>
       
@@ -211,10 +217,9 @@
       </div>
     </div>
 
-    <!-- 5. フレンド管理・オンライン画面 -->
     <div id="friend-screen" class="hidden">
       <h2>フレンド・オンライン</h2>
-      <div class="user-info" id="friend-my-tag" style="color: #9c27b0; font-weight: bold;">あなたのタグ: ----</div>
+      <div class="user-info" id="friend-my-tag" style="color: #9c27b0; font-weight: bold; justify-content: center;">あなたのタグ: ----</div>
       
       <h3>フレンドリスト（名前タップで戦績確認）</h3>
       <div id="friend-list-container" class="friend-list">フレンドはいません</div>
@@ -228,7 +233,6 @@
       <button id="btn-friend-back" style="background-color: #888; margin-top: 10px;">メニューに戻る</button>
     </div>
 
-    <!-- 4. 対戦メイン画面 -->
     <div id="game-screen" class="hidden">
       <h2 id="room-title">部屋ID: ----</h2>
       <div id="game-status" style="font-weight: bold; color: #555;">相手の参加を待っています...</div>
@@ -260,9 +264,8 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    // 変更：onAuthStateChanged をインポートに追加
     import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDFeeG0cXom0TBmUngUDbBf_0CqKVRqKwg",
@@ -311,6 +314,7 @@
     const friendMyTag = document.getElementById("friend-my-tag");
     const friendListContainer = document.getElementById("friend-list-container");
     const friendSearchInput = document.getElementById("friend-search-input");
+    const selectMyStatus = document.getElementById("select-my-status");
 
     let currentUid = null;
     let activeRoomId = null;
@@ -337,26 +341,21 @@
 
     function generateUserTag() { return Math.floor(1000 + Math.random() * 9000).toString(); }
 
-    // ─── 確定枠：アプリ起動時に過去のログイン情報を自動的に復旧・維持するリスナー ───
     onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // ログイン状態が残っている場合、自動でデータを読み込んでメイン画面へ
         currentUid = user.uid;
-        loadingStatus.textContent = ""; // ローディング表示を消す
+        loadingStatus.textContent = "";
         await checkUserRegistered(user.uid);
       } else {
-        // ログイン情報がない場合、初めてログイン画面を表示する
         currentUid = null;
         loadingStatus.textContent = "";
         showScreen("login");
       }
     });
 
-    // ログインボタンのクリックイベント
     document.getElementById("btn-login").addEventListener("click", async () => {
       try {
         loadingStatus.textContent = "ログイン認証中...";
-        // signInWithPopupを実行するとブラウザに自動でセッションが保存されます
         await signInWithPopup(auth, provider);
       } catch (error) {
         console.error(error);
@@ -378,6 +377,12 @@
           const freshSnap = await getDoc(userRef);
           userData = freshSnap.data();
         }
+
+        // 保存されていた選択ステータスがあればプルダウンに復元
+        if (userData.settingStatus) {
+          selectMyStatus.value = userData.settingStatus;
+        }
+
         showScreen("menu");
         userDisplay.textContent = `プレイヤー: ${userData.username}#${userData.userTag}`;
         friendMyTag.textContent = `あなたのタグ: ${userData.username}#${userData.userTag}`;
@@ -396,7 +401,7 @@
       try {
         const tag = generateUserTag();
         await setDoc(doc(db, "users", currentUid), {
-          uid: currentUid, username: name, userTag: tag, friends: [], lastActive: serverTimestamp(), createdAt: new Date()
+          uid: currentUid, username: name, userTag: tag, friends: [], settingStatus: "auto", lastActive: serverTimestamp(), createdAt: new Date()
         });
         showScreen("menu");
         userDisplay.textContent = `プレイヤー: ${name}#${tag}`;
@@ -430,11 +435,40 @@
       }
     });
 
+    // ─── 修正：セレクトボックスの切り替えイベント ───
+    selectMyStatus.addEventListener("change", async () => {
+      const currentSelection = selectMyStatus.value;
+      try {
+        await updateDoc(doc(db, "users", currentUid), { settingStatus: currentSelection });
+        // 切り替えた瞬間にハートビートを即時再計算
+        runHeartbeatTick(currentSelection);
+      } catch (e) { console.error(e); }
+    });
+
+    // ハートビート処理本体
+    function runHeartbeatTick(statusType) {
+      if (!currentUid) return;
+      
+      if (statusType === "online") {
+        // 常にオンライン：未来の超巨大タイムスタンプを置いて強制固定
+        const farFuture = new Date("2099-12-31").getTime();
+        updateDoc(doc(db, "users", currentUid), { lastActive: new Date(farFuture) });
+      } else if (statusType === "offline") {
+        // 常にオフライン：過去のタイムスタンプを置いて非表示化
+        const farPast = new Date("2000-01-01").getTime();
+        updateDoc(doc(db, "users", currentUid), { lastActive: new Date(farPast) });
+      } else {
+        // 自動（通常）：現在の正規のサーバー時間を送信
+        updateDoc(doc(db, "users", currentUid), { lastActive: serverTimestamp() });
+      }
+    }
+
     function startHeartbeat() {
       clearInterval(heartBeatInterval);
-      updateDoc(doc(db, "users", currentUid), { lastActive: serverTimestamp() });
+      runHeartbeatTick(selectMyStatus.value);
+      
       heartBeatInterval = setInterval(() => {
-        if (currentUid) { updateDoc(doc(db, "users", currentUid), { lastActive: serverTimestamp() }); }
+        runHeartbeatTick(selectMyStatus.value);
       }, 10000);
     }
 
@@ -499,32 +533,50 @@
 
       try {
         const roomsRef = collection(db, "rooms");
-        const q = query(roomsRef, where("status", "==", "waiting"), orderBy("createdAt", "asc"), limit(1));
+        const q = query(roomsRef, where("status", "==", "waiting"), orderBy("createdAt", "asc"));
         const querySnapshot = await getDocs(q);
 
-        if (!querySnapshot.empty) {
-          const targetRoomDoc = querySnapshot.docs[0];
-          const roomData = targetRoomDoc.data();
-          const roomId = targetRoomDoc.id;
+        let targetRoomDoc = null;
 
-          if (!roomData.players.includes(currentUid)) {
-            const updatedShingiCounts = { ...roomData.shingiCounts, [currentUid]: 0 };
-            await updateDoc(doc(db, "rooms", roomId), {
-              players: arrayUnion(currentUid),
-              shingiCounts: updatedShingiCounts,
-              status: "playing"
-            });
-            activeRoomId = roomId;
-            watchRoom(roomId);
-            return;
+        querySnapshot.forEach((doc) => {
+          if (!targetRoomDoc && doc.id.startsWith("FREE_")) {
+            const roomData = doc.data();
+            if (!roomData.players.includes(currentUid)) {
+              targetRoomDoc = doc;
+            }
           }
+        });
+
+        if (targetRoomDoc) {
+          const roomId = targetRoomDoc.id;
+          const roomData = targetRoomDoc.data();
+          const updatedShingiCounts = { ...roomData.shingiCounts, [currentUid]: 0 };
+          
+          await updateDoc(doc(db, "rooms", roomId), {
+            players: arrayUnion(currentUid),
+            shingiCounts: updatedShingiCounts,
+            status: "playing"
+          });
+          
+          activeRoomId = roomId;
+          watchRoom(roomId);
+          return;
         }
 
         let roomId = "FREE_" + Math.floor(1000 + Math.random() * 9000).toString();
         let roomRef = doc(db, "rooms", roomId);
+        
         await setDoc(roomRef, {
-          roomId: roomId, status: "waiting", players: [currentUid], createdAt: serverTimestamp(), lastWord: "しりとり", usedWords: ["しりとり"], currentTurn: currentUid, shingiCounts: { [currentUid]: 0 }
+          roomId: roomId,
+          status: "waiting",
+          players: [currentUid],
+          createdAt: serverTimestamp(),
+          lastWord: "しりとり",
+          usedWords: ["しりとり"],
+          currentTurn: currentUid,
+          shingiCounts: { [currentUid]: 0 }
         });
+        
         activeRoomId = roomId;
         watchRoom(roomId);
       } catch (error) {
@@ -553,7 +605,8 @@
             if (fData.lastActive) {
               const lastActiveTime = fData.lastActive.toDate().getTime();
               const nowTime = new Date().getTime();
-              if (nowTime - lastActiveTime < 30000) { isOnline = true; }
+              // 30秒判定ルール（常にオンラインのプレイヤーは未来時間なので自動的にtrueを維持）
+              if (nowTime - lastActiveTime < 30000 || lastActiveTime > nowTime) { isOnline = true; }
             }
             fData.calculatedOnline = isOnline;
             friendDataList.push(fData);
