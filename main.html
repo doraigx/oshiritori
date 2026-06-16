@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりアプリ - バグ自動修復版</title>
+  <title>しりとりアプリ - 内蔵単語帳版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -115,10 +115,10 @@
     }
     .friend-item:last-child { border-bottom: none; }
 
-    /* 辞書読み込み状態 */
     #dict-status {
       font-size: 12px;
-      color: #666;
+      color: #34a853;
+      font-weight: bold;
       margin-bottom: 10px;
     }
   </style>
@@ -127,7 +127,7 @@
 
   <div class="container">
     <h1>しりとりポータル</h1>
-    <div id="dict-status">⏳ 辞書データを読み込み中...</div>
+    <div id="dict-status">✅ 単語帳読み込み完了 (内蔵モード)</div>
 
     <div id="login-screen">
       <p>ゲームを始めるにはGoogleアカウントでログインしてください。</p>
@@ -243,7 +243,6 @@
     const btnShingi = document.getElementById("btn-shingi");
     const btnRetire = document.getElementById("btn-retire");
     const shingiCounter = document.getElementById("shingi-counter");
-    const dictStatus = document.getElementById("dict-status");
 
     const friendMyTag = document.getElementById("friend-my-tag");
     const friendListContainer = document.getElementById("friend-list-container");
@@ -254,21 +253,22 @@
     let unsubscribeRoom = null;
     let unsubscribeFriends = null;
 
-    let wordDictionary = new Set();
-    async function loadDictionary() {
-      try {
-        const response = await fetch("https://raw.githubusercontent.com/misono/misono-tango-dataset/master/tango.json");
-        const data = await response.json();
-        data.forEach(item => { if (item.kana) { wordDictionary.add(item.kana); } });
-        dictStatus.textContent = `✅ 辞書読込完了 (${wordDictionary.size}語)`;
-        dictStatus.style.color = "#34a853";
-      } catch (error) {
-        console.error(error);
-        dictStatus.textContent = "⚠️ 辞書の読み込みに失敗";
-        dictStatus.style.color = "#ea4335";
-      }
-    }
-    loadDictionary();
+    // ─── 【新設】プログラム内蔵型の単語帳リスト ───
+    // 通信エラーを避けるため、コード内に直接配列を持たせます。自由に追加・編集してください。
+    const wordList = [
+      "しりとり", "りんご", "ごりら", "らっぱ", "ぱんだ", "たぬき", "きつね", "ねこ", "いぬ", "うま",
+      "め", "き", "て", "すいか", "かめ", "めだか", "からす", "すずめ", "みかん", "いちご",
+      "ごま", "まつり", "りす", "すず", "ずぼん", "んじぇな", "くり", "りぼん", "んご", "ひこうき",
+      "きりん", "にんじん", "とまと", "とけい", "いす", "すまほ", "ほん", "のーと", "ぺん", "くま",
+      "まくら", "らいおん", "いるか", "くじら", "らくだ", "たこ", "いか", "かに", "えび", "さかな",
+      "ごりら", "らっぱ", "ぱん", "うちわ", "わに", "にわとり", "りす", "すずむし", "しか", "からす",
+      "すなば", "ばなな", "なす", "すいぎゅう", "うし", "しまうま", "まんとひひ", "ひつじ", "じゃがいも", "もち",
+      "ちーず", "ずわいがに", "にんじゃ", "やま", "かわ", "うみ", "そら", "くも", "あめ", "ゆき",
+      "かぜ", "かみなり", "たいよう", "つき", "ほし", "うちゅう", "ちきゅう", "かいじゅう", "くるま", "でんしゃ",
+      "じてんしゃ", "ひこうき", "ふね", "へりこぷたー", "ばいく", "とらっく", "ばす", "たいや", "えんじん", "らじお"
+    ];
+    // 検索を高速にするためにSet形式に変換
+    const wordDictionary = new Set(wordList);
 
     document.getElementById("btn-login").addEventListener("click", async () => {
       try {
@@ -281,12 +281,10 @@
       }
     });
 
-    // 4桁タグ生成ヘルパー
     function generateUserTag() {
       return Math.floor(1000 + Math.random() * 9000).toString();
     }
 
-    // ─── 【バグ自動修復付き】ユーザーチェック処理 ───
     async function checkUserRegistered(uid) {
       const userRef = doc(db, "users", uid);
       const userSnap = await getDoc(userRef);
@@ -294,17 +292,11 @@
       if (userSnap.exists()) {
         let userData = userSnap.data();
         
-        // ★自動修復ロジック★ 古いデータにuserTagやfriends配列がない場合、その場で補完してDBを更新する
+        // 古いデータ形式の自動修復
         if (!userData.userTag || !userData.friends) {
           const autoTag = userData.userTag || generateUserTag();
           const autoFriends = userData.friends || [];
-          
-          await updateDoc(userRef, {
-            userTag: autoTag,
-            friends: autoFriends
-          });
-          
-          // 最新状態のデータを読み直す
+          await updateDoc(userRef, { userTag: autoTag, friends: autoFriends });
           const freshSnap = await getDoc(userRef);
           userData = freshSnap.data();
         }
@@ -389,10 +381,7 @@
     document.getElementById("btn-friend-back").addEventListener("click", () => showScreen("menu"));
 
     function generateRoomId() {
-      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-      let result = "";
-      for (let i = 0; i < 4; i++) { chars.charAt(Math.floor(Math.random() * chars.length)); }
-      return Math.floor(1000 + Math.random() * 9000).toString(); // 4桁の数字部屋に変更
+      return Math.floor(1000 + Math.random() * 9000).toString();
     }
 
     document.getElementById("btn-create-room").addEventListener("click", async () => {
@@ -493,8 +482,9 @@
       if (!input) return;
       if (!/^[ぁ-んー]+$/.test(input)) return alert("ひらがなだけで入力してください！");
 
-      if (wordDictionary.size > 0 && !wordDictionary.has(input)) {
-        return alert(`「${input}」は単語帳に登録されていません！`);
+      // 【内蔵単語帳チェック】登録した単語一覧に入っているか
+      if (!wordDictionary.has(input)) {
+        return alert(`「${input}」は単語帳に登録されていません！実在する正しい言葉を入れてください。`);
       }
 
       const roomRef = doc(db, "rooms", activeRoomId);
