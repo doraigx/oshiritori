@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりポータル</title>
+  <title>しりとりポータル - フル機能完全修正版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -267,7 +267,6 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-    // 【修正箇所】インポートに orderBy を明示的に追加しReferenceErrorを解消
     import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -320,6 +319,16 @@
     const friendSearchInput = document.getElementById("friend-search-input");
     const selectMyStatus = document.getElementById("select-my-status");
 
+    // ─── 【重要修正】依存エラー回避のため、すべての変数宣言直後の最上層スコープに配置 ───
+    const generateRoomId = () => {
+      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+      let result = "";
+      for (let i = 0; i < 4; i++) { result += chars.charAt(Math.floor(Math.random() * chars.length)); }
+      return result;
+    };
+
+    const generateUserTag = () => { return Math.floor(1000 + Math.random() * 9000).toString(); };
+
     let currentUid = null;
     let activeRoomId = null;
     let unsubscribeRoom = null;
@@ -333,8 +342,8 @@
     let isFriendMatchMode = false;
     let currentRoomPlayers = [];
     let isHistorySaved = false;
-    let currentSentInviteId = null;   // 送信した招待ドキュメントIDキープ用
-    let currentSentInviteTargetUid = null; // 送信した相手のUIDキープ用
+    let currentSentInviteId = null;   
+    let currentSentInviteTargetUid = null; 
 
     const smallToLargeMap = { 'ゃ': 'や', 'ゅ': 'ゆ', 'ょ': 'よ', 'っ': 'つ' };
 
@@ -513,10 +522,9 @@
       } catch (e) { console.error(e); }
     }
 
-    // オートマッチング（インポート追加によりバグ完全修正）
     document.getElementById("btn-free").addEventListener("click", async () => {
       isFriendMatchMode = false;
-      btnCancelInvite.classList.add("hidden"); // オートマッチ時は取り消しボタン不要
+      btnCancelInvite.classList.add("hidden"); 
       gameStatus.textContent = "対戦相手を探しています...";
       roomTitle.textContent = "自動マッチング中";
       showScreen("game");
@@ -631,7 +639,7 @@
       const myName = mySnap.exists() ? mySnap.data().username : "フレンド";
       if (!confirm(`${targetName} さんに対戦を申し込みますか？`)) return;
       
-      let roomId = generateRoomId();
+      let roomId = generateRoomId(); 
       let roomRef = doc(db, "rooms", roomId);
       let roomSnap = await getDoc(roomRef);
       while (roomSnap.exists()) {
@@ -641,12 +649,10 @@
         roomId: roomId, status: "waiting", players: [currentUid], createdAt: serverTimestamp(), lastWord: "しりとり", usedWords: ["しりとり"], currentTurn: currentUid, shingiCounts: { [currentUid]: 0 }
       });
 
-      // 招待状ドキュメントを生成
       const inviteId = "INV_" + generateRoomId();
       const inviteRef = doc(db, "users", targetUid, "invites", inviteId);
       await setDoc(inviteRef, { roomId: roomId, hostName: myName, createdAt: new Date() });
 
-      // キャンセル用にIDと対象のUIDをキープ
       currentSentInviteId = inviteId;
       currentSentInviteTargetUid = targetUid;
 
@@ -654,13 +660,11 @@
       roomTitle.textContent = "フレンドマッチ待機中";
       gameStatus.textContent = `${targetName} さんの参加を受け付け中...`;
       
-      // 取り消しボタンを表示する
       btnCancelInvite.classList.remove("hidden");
 
       showScreen("game"); watchRoom(roomId);
     }
 
-    // ─── 新設：招待を取り消すボタンを押したときの処理 ───
     btnCancelInvite.addEventListener("click", async () => {
       if (!confirm("対戦申し込みを取り消しますか？")) return;
       
@@ -668,19 +672,17 @@
       clearInterval(countdownInterval);
 
       try {
-        // 1. 相手のフォルダに投げ入れた招待状ドキュメントを削除（これで相手の画面の通知バーが消える）
         if (currentSentInviteTargetUid && currentSentInviteId) {
           const inviteRef = doc(db, "users", currentSentInviteTargetUid, "invites", currentSentInviteId);
           await deleteDoc(inviteRef);
         }
 
-        // 2. 作成していた待機部屋のステータスをfinished（CANCELED）にする
         if (activeRoomId) {
           const roomRef = doc(db, "rooms", activeRoomId);
           await updateDoc(roomRef, {
             status: "finished",
             winnerName: "メニュー",
-            finishReason: "CANCELED" // 取り消しフラグ
+            finishReason: "CANCELED" 
           });
         }
       } catch (e) { console.error("招待取り消しエラー:", e); }
@@ -693,9 +695,7 @@
       if (unsubscribeInvite) unsubscribeInvite();
       const invitesRef = collection(db, "users", currentUid, "invites");
       
-      // 招待コレクション自体を監視
       unsubscribeInvite = onSnapshot(invitesRef, (snapshot) => {
-        // フォルダが完全に空になった＝誘った側がキャンセルした
         if (snapshot.empty) {
           inviteZone.classList.add("hidden");
           incomingRoomId = null;
@@ -707,7 +707,6 @@
             const inviteData = change.doc.data();
             incomingRoomId = inviteData.roomId.toUpperCase();
             
-            // 招待状IDをキープしておき、受ける/断るが押されたら消す
             const currentInviteDocRef = change.doc.ref;
 
             const roomSnap = await getDoc(doc(db, "rooms", incomingRoomId));
@@ -716,10 +715,9 @@
             inviteMsgText.textContent = `⚔️ ${inviteData.hostName} から対戦申し込みが届きました！`;
             btnDeclineInvite.setAttribute("data-room-id", incomingRoomId);
             
-            // 受ける・断るボタンに、この招待ドキュメントを直接消去するイベントをバインド
             btnAcceptInvite.onclick = async () => {
               inviteZone.classList.add("hidden");
-              await deleteDoc(currentInviteDocRef); // ドキュメントを消す
+              await deleteDoc(currentInviteDocRef); 
 
               const roomRef = doc(db, "rooms", incomingRoomId);
               const freshSnap = await getDoc(roomRef);
@@ -738,7 +736,7 @@
 
             btnDeclineInvite.onclick = async () => {
               inviteZone.classList.add("hidden");
-              await deleteDoc(currentInviteDocRef); // ドキュメントを消す
+              await deleteDoc(currentInviteDocRef); 
 
               const roomRef = doc(db, "rooms", incomingRoomId);
               if ((await getDoc(roomRef)).exists()) {
@@ -848,7 +846,6 @@
           clearInterval(countdownInterval);
         } 
         else if (data.status === "playing") {
-          // 試合が始まったら取り消しボタンを非表示にする
           btnCancelInvite.classList.add("hidden");
 
           gameStatus.textContent = "試合中！";
@@ -876,7 +873,6 @@
           if (unsubscribeRoom) unsubscribeRoom();
           btnCancelInvite.classList.add("hidden");
 
-          // ─── 修正：取り消し、または辞退された時の分岐 ───
           if (data.finishReason === "CANCELED") {
             alert("対戦申し込みを取り消しました。");
           } else if (data.finishReason && data.finishReason.startsWith("REFUSED:")) {
