@@ -131,7 +131,6 @@
   <div class="container">
     <div id="loading-status">接続チェック中...</div>
 
-    <!-- 招待通知エリア -->
     <div id="invite-notification-zone" class="invite-alert-box hidden">
       <span id="invite-msg-text">〇〇から対戦申し込みが来ました！</span>
       <div class="action-group" style="margin-top: 10px;">
@@ -140,14 +139,12 @@
       </div>
     </div>
 
-    <!-- 1. 初期ログイン画面 -->
     <div id="login-screen" class="game-card hidden" style="text-align: center;">
       <h1>しりとりポータル</h1>
       <p>ゲームを始めるにはGoogleアカウントでログインしてください。</p>
       <button id="btn-login">Googleでログイン</button>
     </div>
 
-    <!-- 2. 初回のみ表示されるユーザーネーム登録画面 -->
     <div id="register-screen" class="game-card hidden" style="text-align: center;">
       <h1>プロフィール登録</h1>
       <p>ユーザーネームを決めてください</p>
@@ -155,13 +152,11 @@
       <button id="btn-register">登録して次へ</button>
     </div>
 
-    <!-- 3. メインメニュー画面 -->
     <div id="menu-screen" class="hidden">
       <h1 style="margin-bottom: 30px;">しりとりポータル</h1>
       
       <div class="pc-layout-grid">
         <div class="pc-left-col">
-          <!-- プレイヤー情報 -->
           <div class="game-card">
             <h3>プレイヤー情報</h3>
             <div class="user-info">
@@ -179,7 +174,6 @@
             <button id="btn-to-friend" style="background-color: #9c27b0; padding: 12px;">フレンド・オンラインリスト</button>
           </div>
 
-          <!-- 対人モード -->
           <div class="game-card">
             <h3>対人モード</h3>
             <button id="btn-create-room" style="background-color: #f4b400; margin-bottom: 16px;">新しく部屋を作る</button>
@@ -189,7 +183,6 @@
             </div>
           </div>
           
-          <!-- フリーモード -->
           <div class="game-card">
             <h3>フリーモード</h3>
             <p style="font-size: 14px; color:#666; margin-top:0; margin-bottom:12px;">誰でも入れる公開部屋を探すか、待機部屋を作成します。</p>
@@ -198,14 +191,12 @@
         </div>
 
         <div class="pc-right-col">
-          <!-- 累計戦績 -->
           <div class="game-card">
             <h3>🏆 累計戦績</h3>
             <div class="stats-display" id="total-stats-text">0勝 0敗</div>
             <div class="stats-sub" id="total-wr-text">勝率: --%</div>
           </div>
 
-          <!-- 直近の勝敗履歴 -->
           <div class="game-card">
             <h3>📊 直近の勝敗履歴 (5件)</h3>
             <div id="history-list-container">履歴はありません</div>
@@ -214,7 +205,6 @@
       </div>
     </div>
 
-    <!-- 5. フレンド管理画面 -->
     <div id="friend-screen" class="hidden">
       <div class="game-card" style="margin-bottom: 20px; text-align: center;">
         <h2>フレンド</h2>
@@ -238,7 +228,6 @@
       </div>
     </div>
 
-    <!-- 4. 対戦メイン画面 -->
     <div id="game-screen" class="game-card hidden" style="max-width: 500px; margin: 0 auto;">
       <h2 id="room-title">部屋ID: ----</h2>
       <div id="game-status" style="font-weight: bold; color: #555; text-align: center; margin-bottom: 20px;">相手の参加を待っています...</div>
@@ -273,7 +262,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDFeeG0cXom0TBmUngUDbBf_0CqKVRqKwg",
@@ -365,6 +354,16 @@
       const min = String(date.getMinutes()).padStart(2, '0');
       return `${y}/${m}/${d} ${hr}:${min}`;
     };
+
+    // ─── 追加：Googleログインボタンのクリックイベント ───
+    document.getElementById("btn-login").addEventListener("click", async () => {
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (error) {
+        console.error("ログインエラー:", error);
+        alert("Googleログインに失敗しました。詳細: " + error.message);
+      }
+    });
 
     onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -898,15 +897,14 @@
           const shingiRemaining = 10 - myUsedShingi;
           shingiCounter.textContent = `審議残り: ${shingiRemaining >= 0 ? shingiRemaining : 0}回`;
 
-          // ─── 【重要修正】審議ボタンの有効化ロジックを完全解決 ───
           if (data.currentTurn === currentUid) {
             turnIndicator.textContent = "あなたの番です！"; turnIndicator.className = "turn-badge my-turn";
             shiritoriInput.disabled = false; btnSendWord.disabled = false; 
-            btnShingi.disabled = true;  // 中央にあるのは相手の単語。自分の入力中なので、今さら前回の相手の言葉にはダウトできない
+            btnShingi.disabled = true; 
           } else {
             turnIndicator.textContent = "相手の番です..."; turnIndicator.className = "turn-badge enemy-turn";
             shiritoriInput.disabled = true; btnSendWord.disabled = true; 
-            btnShingi.disabled = false; // 相手の番（＝自分が送信した直後）。中央に表示されている自分の言葉に対して、相手側から異議を申し立てられるのを待つ状態
+            btnShingi.disabled = false;
           }
           startLocalTimer(data);
         } 
@@ -987,14 +985,13 @@
       } catch (error) { console.error(error); }
     });
 
-    // ─── 修正：審議ボタン（相手の画面で押された時、送信側＝自分の番に差し戻す） ───
     btnShingi.addEventListener("click", async () => {
       const roomRef = doc(db, "rooms", activeRoomId);
       try {
         const roomSnap = await getDoc(roomRef);
         const roomData = roomSnap.data();
         const currentShingiCount = roomData.shingiCounts && roomData.shingiCounts[currentUid] ? roomData.shingiCounts[currentUid] : 0;
-        const nextTurnUid = roomData.players.find(uid => uid !== currentUid); // 相手のUID
+        const nextTurnUid = roomData.players.find(uid => uid !== currentUid); 
 
         if (!confirm(`相手が出した単語「${roomData.lastWord}」を物言いにし、やり直しを求めますか？`)) return;
 
@@ -1005,10 +1002,9 @@
         if (wordsList.length > 1) { wordsList.pop(); }
         const rolledBackWord = wordsList[wordsList.length - 1] || "しりとり";
 
-        // 【修正点】ターンを自分ではなく「相手（nextTurnUid）」に戻す
         await updateDoc(roomRef, {
           shingiCounts: updatedCounts, 
-          currentTurn: nextTurnUid, // 相手にターンを突き返す
+          currentTurn: nextTurnUid, 
           lastWord: rolledBackWord, 
           usedWords: wordsList
         });
