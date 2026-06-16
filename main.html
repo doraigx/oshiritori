@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりポータル - マッチング修正版</title>
+  <title>しりとりポータル - PC最適化・日時表示版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -13,7 +13,7 @@
       align-items: center;
       min-height: 100vh;
       margin: 0;
-      padding: 20px 0;
+      padding: 20px;
       box-sizing: border-box;
     }
     .container {
@@ -21,11 +21,35 @@
       padding: 30px;
       border-radius: 12px;
       box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-      text-align: center;
-      width: 90%;
-      max-width: 400px;
+      width: 100%;
+      max-width: 400px; /* スマホ時のデフォルト幅 */
+      transition: max-width 0.3s ease;
+      box-sizing: border-box;
     }
-    h1 { color: #333; margin-bottom: 24px; }
+    
+    /* ─── PC向け大画面レイアウト最適化 ─── */
+    @media (min-width: 850px) {
+      .container {
+        max-width: 900px; /* PCでは画面をワイドに広く使う */
+      }
+      .pc-layout-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr; /* 左右2カラムに分割 */
+        gap: 40px;
+        text-align: left;
+      }
+      .pc-left-col {
+        border-right: 1px solid #eee;
+        padding-right: 20px;
+      }
+      .pc-right-col {
+        padding-left: 20px;
+      }
+      h3 { margin-top: 0 !important; }
+    }
+
+    h1 { color: #333; margin-bottom: 24px; text-align: center; }
+    h2 { text-align: center; color: #333; }
     h3 { color: #555; text-align: left; margin-top: 20px; margin-bottom: 10px; }
     button {
       background-color: #4285f4;
@@ -72,6 +96,7 @@
       background: #f0f4f8;
       padding: 15px;
       border-radius: 8px;
+      text-align: center;
     }
     .turn-badge {
       display: inline-block;
@@ -80,6 +105,7 @@
       font-size: 14px;
       font-weight: bold;
       margin-bottom: 15px;
+      text-align: center;
     }
     .my-turn { background-color: #e6f4ea; color: #137333; }
     .enemy-turn { background-color: #fce8e6; color: #c5221f; }
@@ -93,6 +119,7 @@
       padding: 8px;
       border-radius: 6px;
       border: 1px solid #fcedeb;
+      text-align: center;
     }
 
     .action-group {
@@ -101,7 +128,7 @@
       margin-top: 10px;
     }
     .btn-action { font-size: 14px; padding: 10px; }
-    .shingi-count-text { font-size: 12px; color: #666; margin-top: 4px; }
+    .shingi-count-text { font-size: 12px; color: #666; margin-top: 4px; text-align: center; }
 
     /* フレンド機能用 */
     .friend-list {
@@ -109,7 +136,7 @@
       background: #f9f9f9;
       padding: 10px;
       border-radius: 6px;
-      max-height: 200px;
+      max-height: 250px;
       overflow-y: auto;
       margin-bottom: 15px;
       border: 1px solid #eee;
@@ -143,16 +170,24 @@
     .history-card {
       background: #fafafa;
       border: 1px solid #eef0f4;
-      padding: 10px;
+      padding: 12px;
       border-radius: 6px;
       margin-bottom: 8px;
       font-size: 13px;
+      position: relative;
+    }
+    .history-time {
+      display: block;
+      font-size: 11px;
+      color: #aaa;
+      margin-bottom: 4px;
+      font-weight: normal;
     }
     .win-text { color: #137333; font-weight: bold; }
     .lose-text { color: #c5221f; font-weight: bold; }
     
     .btn-small-edit { background-color: #666; font-size: 11px; padding: 4px 8px; width: auto; border-radius: 4px; margin-left: 8px; }
-    #loading-status { font-size: 14px; color: #666; margin-bottom: 10px; }
+    #loading-status { font-size: 14px; color: #666; margin-bottom: 10px; text-align: center; }
   </style>
 </head>
 <body>
@@ -173,82 +208,97 @@
 
     <!-- 1. 初期ログイン画面 -->
     <div id="login-screen" class="hidden">
-      <p>ゲームを始めるにはGoogleアカウントでログインしてください。</p>
+      <p style="text-align:center;">ゲームを始めるにはGoogleアカウントでログインしてください。</p>
       <button id="btn-login">Googleでログイン</button>
     </div>
 
     <!-- 2. 初回のみ表示されるユーザーネーム登録画面 -->
     <div id="register-screen" class="hidden">
-      <p>ユーザーネームを決めてください</p>
+      <p style="text-align:center;">ユーザーネームを決めてください</p>
       <input type="text" id="username-input" placeholder="例: どーらい">
       <button id="btn-register">登録して次へ</button>
     </div>
 
-    <!-- 3. ログイン完了後のメインメニュー画面 -->
+    <!-- 3. ログイン完了後のメインメニュー画面 (PCでは2カラムグリッド化) -->
     <div id="menu-screen" class="hidden">
-      <div class="user-info">
-        <span id="user-display">プレイヤー: ----</span>
-        <button id="btn-edit-name" class="btn-small-edit">✏️ 名前変更</button>
-      </div>
+      <div class="pc-layout-grid">
+        
+        <!-- 左カラム：操作エリア -->
+        <div class="pc-left-col">
+          <div class="user-info">
+            <span id="user-display">プレイヤー: ----</span>
+            <button id="btn-edit-name" class="btn-small-edit">✏️ 名前変更</button>
+          </div>
 
-      <div class="status-select-zone">
-        <span>自分の状態:</span>
-        <select id="select-my-status">
-          <option value="auto">自動 (開いている時のみON)</option>
-          <option value="online">常にオンライン固定</option>
-          <option value="offline">オフライン (隠れる)</option>
-        </select>
-      </div>
+          <div class="status-select-zone">
+            <span>自分の状態:</span>
+            <select id="select-my-status">
+              <option value="auto">自動 (開いている時のみON)</option>
+              <option value="online">常にオンライン固定</option>
+              <option value="offline">オフライン (隠れる)</option>
+            </select>
+          </div>
 
-      <button id="btn-to-friend" style="background-color: #9c27b0; margin-bottom: 15px; padding: 8px;">👥 フレンド画面・オンラインリスト</button>
-      <hr>
-      
-      <h3>【対人モード】</h3>
-      <button id="btn-create-room" style="background-color: #f4b400; margin-bottom: 15px;">新しく部屋を作る（4桁ID発行）</button>
-      
-      <div class="flex-group">
-        <input type="text" id="room-id-input" placeholder="4桁の部屋IDを入力">
-        <button id="btn-join-room" style="background-color: #4285f4;">部屋に入る</button>
-      </div>
-      
-      <hr>
-      <h3>【フリーモード】</h3>
-      <button id="btn-free" style="background-color: #34a853;">オートマッチング（自動対戦）</button>
-      
-      <div class="history-section">
-        <h3>直近の勝敗履歴 (5件)</h3>
-        <div id="history-list-container">履歴はありません</div>
+          <button id="btn-to-friend" style="background-color: #9c27b0; margin-bottom: 15px; padding: 10px;">👥 フレンド画面・オンラインリストを開く</button>
+          <hr>
+          
+          <h3>【対人モード】</h3>
+          <button id="btn-create-room" style="background-color: #f4b400; margin-bottom: 15px;">新しく部屋を作る（4桁ID発行）</button>
+          
+          <div class="flex-group">
+            <input type="text" id="room-id-input" placeholder="4桁の部屋IDを入力">
+            <button id="btn-join-room" style="background-color: #4285f4;">部屋に入る</button>
+          </div>
+          
+          <hr>
+          <h3>【フリーモード】</h3>
+          <button id="btn-free" style="background-color: #34a853; margin-bottom: 15px;">オートマッチング（自動対戦）</button>
+        </div>
+
+        <!-- 右カラム：履歴表示エリア -->
+        <div class="pc-right-col">
+          <div class="history-section">
+            <h3>📊 直近の勝敗履歴 (5件)</h3>
+            <div id="history-list-container">履歴はありません</div>
+          </div>
+        </div>
+
       </div>
     </div>
 
-    <!-- 5. フレンド管理・オンライン画面 -->
+    <!-- 5. フレンド管理・オンライン画面 (PCでは2カラムグリッド化) -->
     <div id="friend-screen" class="hidden">
       <h2>フレンド・オンライン</h2>
-      <div class="user-info" id="friend-my-tag" style="color: #9c27b0; font-weight: bold; justify-content: center;">あなたのタグ: ----</div>
+      <div class="user-info" id="friend-my-tag" style="color: #9c27b0; font-weight: bold; justify-content: center; margin-bottom: 20px;">あなたのタグ: ----</div>
       
-      <h3>フレンドリスト（名前タップで戦績確認）</h3>
-      <div id="friend-list-container" class="friend-list">フレンドはいません</div>
-
-      <h3>フレンド追加</h3>
-      <div class="flex-group">
-        <input type="text" id="friend-search-input" placeholder="例: どーらい#1234">
-        <button id="btn-add-friend" style="background-color: #9c27b0;">追加</button>
+      <div class="pc-layout-grid">
+        <div class="pc-left-col">
+          <h3>👥 フレンドリスト（名前タップで個人戦績）</h3>
+          <div id="friend-list-container" class="friend-list">フレンドはいません</div>
+        </div>
+        
+        <div class="pc-right-col">
+          <h3>➕ フレンド追加</h3>
+          <div class="flex-group">
+            <input type="text" id="friend-search-input" placeholder="例: どーらい#1234">
+            <button id="btn-add-friend" style="background-color: #9c27b0;">追加</button>
+          </div>
+          <hr style="margin-top: 40px;">
+          <button id="btn-friend-back" style="background-color: #888;">メニューに戻る</button>
+        </div>
       </div>
-      
-      <button id="btn-friend-back" style="background-color: #888; margin-top: 10px;">メニューに戻る</button>
     </div>
 
     <!-- 4. 対戦メイン画面 -->
     <div id="game-screen" class="hidden">
       <h2 id="room-title">部屋ID: ----</h2>
-      <div id="game-status" style="font-weight: bold; color: #555;">相手の参加を待っています...</div>
+      <div id="game-status" style="font-weight: bold; color: #555; text-align: center; margin-bottom: 15px;">相手の参加を待っています...</div>
       
-      <!-- 招待取り消しボタン -->
       <button id="btn-cancel-invite" class="hidden" style="background-color: #e0a800; color: white; margin-top: 10px; margin-bottom: 10px; font-size: 16px; padding: 12px; width: 100%; border-radius: 6px;">🏳️ 招待を取り消す</button>
 
-      <div id="shiritori-area" class="hidden">
+      <div id="shiritori-area" class="hidden" style="max-width: 500px; margin: 0 auto;">
         <div id="timer-box" class="timer-display">残り時間: 15秒</div>
-        <div id="turn-indicator" class="turn-badge">読み込み中...</div>
+        <div style="text-align: center;"><div id="turn-indicator" class="turn-badge">読み込み中...</div></div>
         <div class="word-display" id="current-word">ーーー</div>
         
         <div class="flex-group">
@@ -267,15 +317,14 @@
         </div>
       </div>
       
-      <!-- メニューに戻るボタン -->
-      <button id="btn-leave" style="background-color: #888; margin-top: 20px;">メニューに戻る</button>
+      <button id="btn-leave" style="background-color: #888; margin-top: 30px;">メニューに戻る</button>
     </div>
   </div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDFeeG0cXom0TBmUngUDbBf_0CqKVRqKwg",
@@ -353,7 +402,19 @@
     let currentSentInviteId = null;   
     let currentSentInviteTargetUid = null; 
 
-    const smallToLargeMap = { 'ゃ': '原', 'ゅ': 'ゆ', 'ょ': 'よ', 'っ': 'つ' };
+    const smallToLargeMap = { 'ゃ': 'や', 'ゅ': 'ゆ', 'ょ': 'よ', 'っ': 'つ' };
+
+    // 日時フォーマット用の補助関数
+    const formatTimestamp = (timestamp) => {
+      if (!timestamp) return "ーー/ーー ーー:ーー";
+      const date = timestamp.toDate();
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      const hr = String(date.getHours()).padStart(2, '0');
+      const min = String(date.getMinutes()).padStart(2, '0');
+      return `${y}/${m}/${d} ${hr}:${min}`;
+    };
 
     onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -477,6 +538,7 @@
       }, 10000);
     }
 
+    // ─── 修正：対戦日時の取得・表示の組み込み ───
     async function loadGlobalHistory() {
       try {
         const historyRef = collection(db, "histories");
@@ -484,7 +546,7 @@
         
         onSnapshot(q, async (snapshot) => {
           if (snapshot.empty) {
-            historyListContainer.innerHTML = "<div class='history-card'>履歴はありません</div>";
+            historyListContainer.innerHTML = "<div class='history-card' style='text-align:center;'>履歴はありません</div>";
             return;
           }
           let rawList = [];
@@ -501,11 +563,16 @@
             const enemyUid = hData.uids.find(id => id !== currentUid);
             const enemySnap = await getDoc(doc(db, "users", enemyUid));
             const enemyName = enemySnap.exists() ? enemySnap.data().username : "不明なプレイヤー";
+            
+            // 時間データの成形
+            const formattedTime = formatTimestamp(hData.timestamp);
+
             html += `
               <div class="history-card">
+                <span class="history-time">📅 ${formattedTime}</span>
                 <span class="${isWin ? 'win-text' : 'lose-text'}">[${isWin ? 'WIN' : 'LOSE'}]</span> 
                 vs ${enemyName} <br>
-                <small style="color:#777;">理由: ${hData.reason}</small>
+                <small style="color:#777; display:block; margin-top:4px;">理由: ${hData.reason}</small>
               </div>
             `;
           }
@@ -558,9 +625,8 @@
           const roomId = targetRoomDoc.id;
           const roomData = targetRoomDoc.data();
           
-          // 【強化点】一瞬の差で他の人に先を越されていないか再チェック（満員判定）
           if (roomData.players.length >= 2 || roomData.status !== "waiting") {
-            // 先を越されていた場合は、自分がホストになって部屋を作るフローへ流す
+            // パス
           } else {
             const updatedShingiCounts = { ...roomData.shingiCounts, [currentUid]: 0 };
             await updateDoc(doc(db, "rooms", roomId), {
@@ -889,7 +955,7 @@
         } 
         else if (data.status === "finished") {
           clearInterval(countdownInterval);
-          if (unsubscribeRoom) { unsubscribeRoom(); unsubscribeRoom = null; } // 【強化点】即時監視解除
+          if (unsubscribeRoom) { unsubscribeRoom(); unsubscribeRoom = null; } 
           btnCancelInvite.classList.add("hidden");
           btnLeaveRoom.classList.remove("hidden");
 
@@ -912,7 +978,7 @@
           }
           currentSentInviteId = null;
           currentSentInviteTargetUid = null;
-          activeRoomId = null; // ルームID初期化
+          activeRoomId = null; 
           showScreen("menu");
         }
       });
@@ -1005,7 +1071,6 @@
       } catch (error) { console.error(error); }
     });
 
-    // ─── 【重要修正】メニューに戻るボタンを押した時の「待機部屋削除」と「監視強制カット」 ───
     document.getElementById("btn-leave").addEventListener("click", async () => {
       clearInterval(countdownInterval);
       
@@ -1016,12 +1081,10 @@
           if (roomSnap.exists()) {
             const roomData = roomSnap.data();
             
-            // ① 【確定強化】オートマッチ待機中（waiting）だった場合は、データベースから部屋をごと完全に消去して跡形もなくす
             if (roomData.status === "waiting" && activeRoomId.startsWith("FREE_")) {
-              if (unsubscribeRoom) { unsubscribeRoom(); unsubscribeRoom = null; } // 即時切断
+              if (unsubscribeRoom) { unsubscribeRoom(); unsubscribeRoom = null; } 
               await deleteDoc(roomRef);
             } 
-            // ② 試合中（playing）だった場合は、これまで通りペナルティ処理
             else if (roomData.status === "playing") {
               const enemyUid = roomData.players.find(uid => uid !== currentUid);
               const enemySnap = await getDoc(doc(db, "users", enemyUid));
@@ -1034,7 +1097,6 @@
         } catch (e) { console.error(e); }
       }
       
-      // ③ メニューに戻る瞬間に、今見ている部屋のリスナー監視を完全に断ち切る
       if (unsubscribeRoom) { unsubscribeRoom(); unsubscribeRoom = null; }
       activeRoomId = null;
       showScreen("menu");
