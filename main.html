@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりポータル - フル機能版</title>
+  <title>しりとりポータル - フル機能修正版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -307,6 +307,14 @@
     let currentRoomPlayers = [];
     let isHistorySaved = false;
 
+    // ─── 4桁の部屋IDを生成するコア関数 ───
+    function generateRoomId() {
+      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+      let result = "";
+      for (let i = 0; i < 4; i++) { result += chars.charAt(Math.floor(Math.random() * chars.length)); }
+      return result;
+    }
+
     document.getElementById("btn-login").addEventListener("click", async () => {
       try {
         const result = await signInWithPopup(auth, provider);
@@ -371,11 +379,9 @@
       }, 10000);
     }
 
-    // ─── 修正（確定枠）：インデックス不要で100%動くローカルソート履歴機能 ───
     async function loadGlobalHistory() {
       try {
         const historyRef = collection(db, "histories");
-        // 単一条件（whereのみ）に変更し、インデックスエラーを根本から排除
         const q = query(historyRef, where("uids", "array-contains", currentUid));
         
         onSnapshot(q, async (snapshot) => {
@@ -384,20 +390,15 @@
             return;
           }
 
-          // 全データを一度配列に引き抜く
           let rawList = [];
-          snapshot.forEach(doc => {
-            rawList.push(doc.data());
-          });
+          snapshot.forEach(doc => { rawList.push(doc.data()); });
 
-          // ブラウザ（JavaScript）側で時間の新しい順（降順）に並び替える
           rawList.sort((a, b) => {
             const timeA = a.timestamp ? a.timestamp.toDate().getTime() : 0;
             const timeB = b.timestamp ? b.timestamp.toDate().getTime() : 0;
             return timeB - timeA;
           });
 
-          // 直近5件のみを切り抜く
           const displayList = rawList.slice(0, 5);
 
           let html = "";
@@ -537,11 +538,13 @@
       });
     }
 
+    // ─── 修正完了：定義されたgenerateRoomId()を確実に呼び出します ───
     async function sendMatchInvite(targetUid, targetName) {
       const mySnap = await getDoc(doc(db, "users", currentUid));
       const myName = mySnap.exists() ? mySnap.data().username : "フレンド";
       if (!confirm(`${targetName} さんに対戦を申し込みますか？`)) return;
-      let roomId = generateRoomId();
+      
+      let roomId = generateRoomId(); // ここでのクラッシュを完全に修正
       let roomRef = doc(db, "rooms", roomId);
       let roomSnap = await getDoc(roomRef);
       while (roomSnap.exists()) {
