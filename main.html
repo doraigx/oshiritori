@@ -237,7 +237,7 @@
       <h2 id="room-title">部屋ID: ----</h2>
       <div id="game-status" style="font-weight: bold; color: #555;">相手の参加を待っています...</div>
       
-      <button id="btn-cancel-invite" class="hidden" style="background-color: #e0a800; color: white; margin-top: 10px; margin-bottom: 10px; font-size: 14px; padding: 8px;">🏳️ 招待を取り消す</button>
+      <button id="btn-cancel-invite" class="hidden" style="background-color: #e0a800; color: white; margin-top: 10px; margin-bottom: 10px; font-size: 16px; padding: 12px; width: 100%; border-radius: 6px;">🏳️ 招待を取り消す</button>
 
       <div id="shiritori-area" class="hidden">
         <div id="timer-box" class="timer-display">残り時間: 15秒</div>
@@ -308,6 +308,7 @@
     const timerBox = document.getElementById("timer-box");
     const historyListContainer = document.getElementById("history-list-container");
     const btnCancelInvite = document.getElementById("btn-cancel-invite");
+    const btnLeaveRoom = document.getElementById("btn-leave");
 
     const inviteZone = document.getElementById("invite-notification-zone");
     const inviteMsgText = document.getElementById("invite-msg-text");
@@ -319,7 +320,7 @@
     const friendSearchInput = document.getElementById("friend-search-input");
     const selectMyStatus = document.getElementById("select-my-status");
 
-    // ─── 【重要修正】依存エラー回避のため、すべての変数宣言直後の最上層スコープに配置 ───
+    // ─── グローバル配置（スコープ問題の完全解消） ───
     const generateRoomId = () => {
       const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
       let result = "";
@@ -525,6 +526,7 @@
     document.getElementById("btn-free").addEventListener("click", async () => {
       isFriendMatchMode = false;
       btnCancelInvite.classList.add("hidden"); 
+      btnLeaveRoom.classList.remove("hidden"); 
       gameStatus.textContent = "対戦相手を探しています...";
       roomTitle.textContent = "自動マッチング中";
       showScreen("game");
@@ -650,6 +652,7 @@
       });
 
       const inviteId = "INV_" + generateRoomId();
+      // 【修正箇所】"users" の親コレクション指定漏れを修正
       const inviteRef = doc(db, "users", targetUid, "invites", inviteId);
       await setDoc(inviteRef, { roomId: roomId, hostName: myName, createdAt: new Date() });
 
@@ -661,6 +664,7 @@
       gameStatus.textContent = `${targetName} さんの参加を受け付け中...`;
       
       btnCancelInvite.classList.remove("hidden");
+      btnLeaveRoom.classList.add("hidden");
 
       showScreen("game"); watchRoom(roomId);
     }
@@ -669,10 +673,12 @@
       if (!confirm("対戦申し込みを取り消しますか？")) return;
       
       btnCancelInvite.classList.add("hidden");
+      btnLeaveRoom.classList.remove("hidden"); 
       clearInterval(countdownInterval);
 
       try {
         if (currentSentInviteTargetUid && currentSentInviteId) {
+          // 【修正箇所】"users" の親コレクション指定漏れを修正
           const inviteRef = doc(db, "users", currentSentInviteTargetUid, "invites", currentSentInviteId);
           await deleteDoc(inviteRef);
         }
@@ -730,6 +736,9 @@
               await updateDoc(roomRef, { players: arrayUnion(currentUid), shingiCounts: updatedShingiCounts, status: "playing" });
               isFriendMatchMode = true; activeRoomId = incomingRoomId;
               roomTitle.textContent = "フレンドマッチ";
+              
+              btnLeaveRoom.classList.remove("hidden"); 
+
               showScreen("game"); watchRoom(incomingRoomId);
               incomingRoomId = null;
             };
@@ -760,6 +769,7 @@
       if (!currentUid) return alert("ログインしてください");
       isFriendMatchMode = false;
       btnCancelInvite.classList.add("hidden");
+      btnLeaveRoom.classList.remove("hidden");
       let roomId = generateUserTag();
       let roomRef = doc(db, "rooms", roomId);
       try {
@@ -776,6 +786,7 @@
       if (!currentUid) return alert("ログインしてください");
       isFriendMatchMode = false;
       btnCancelInvite.classList.add("hidden");
+      btnLeaveRoom.classList.remove("hidden");
       const targetRoomId = roomIdInput.value.trim().toUpperCase();
       if (!targetRoomId || targetRoomId.length !== 4) return alert("正しい4桁の部屋IDを入力してください");
       const roomRef = doc(db, "rooms", targetRoomId);
@@ -847,6 +858,7 @@
         } 
         else if (data.status === "playing") {
           btnCancelInvite.classList.add("hidden");
+          btnLeaveRoom.classList.remove("hidden"); 
 
           gameStatus.textContent = "試合中！";
           if (isFriendMatchMode) { roomTitle.textContent = "フレンドマッチ"; } 
@@ -857,7 +869,7 @@
           
           const myUsedShingi = data.shingiCounts && data.shingiCounts[currentUid] ? data.shingiCounts[currentUid] : 0;
           const shingiRemaining = 10 - myUsedShingi;
-          shingiCounter.textContent = `審議残り: ${shingiRemaining >= 0 ? shingiRemaining : 0}回`;
+          shiritoriCounter / shingiCounter.textContent = `審議残り: ${shingiRemaining >= 0 ? shingiRemaining : 0}回`;
 
           if (data.currentTurn === currentUid) {
             turnIndicator.textContent = "あなたの番です！"; turnIndicator.className = "turn-badge my-turn";
@@ -872,6 +884,7 @@
           clearInterval(countdownInterval);
           if (unsubscribeRoom) unsubscribeRoom();
           btnCancelInvite.classList.add("hidden");
+          btnLeaveRoom.classList.remove("hidden");
 
           if (data.finishReason === "CANCELED") {
             alert("対戦申し込みを取り消しました。");
