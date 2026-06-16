@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりアプリ - 辞書判定・フレンド機能版</title>
+  <title>しりとりアプリ - バグ自動修復版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -127,23 +127,19 @@
 
   <div class="container">
     <h1>しりとりポータル</h1>
-    <!-- 辞書の読み込み状態を表示するエリア -->
     <div id="dict-status">⏳ 辞書データを読み込み中...</div>
 
-    <!-- 1. 初期ログイン画面 -->
     <div id="login-screen">
       <p>ゲームを始めるにはGoogleアカウントでログインしてください。</p>
       <button id="btn-login">Googleでログイン</button>
     </div>
 
-    <!-- 2. 初回のみ表示されるユーザーネーム登録画面 -->
     <div id="register-screen" class="hidden">
       <p>ユーザーネームを決めてください</p>
       <input type="text" id="username-input" placeholder="例: どーらい">
       <button id="btn-register">登録して次へ</button>
     </div>
 
-    <!-- 3. ログイン完了後のメインメニュー画面 -->
     <div id="menu-screen" class="hidden">
       <div class="user-info" id="user-display"></div>
       <button id="btn-to-friend" style="background-color: #9c27b0; margin-bottom: 15px; padding: 8px;">👥 フレンド画面を開く</button>
@@ -162,7 +158,6 @@
       <button id="btn-free" style="background-color: #34a853;">フリーモード（全世界共通）</button>
     </div>
 
-    <!-- 5. フレンド管理画面 -->
     <div id="friend-screen" class="hidden">
       <h2>フレンド管理</h2>
       <div class="user-info" id="friend-my-tag" style="color: #9c27b0;">あなたのタグ: ----</div>
@@ -180,7 +175,6 @@
       <button id="btn-friend-back" style="background-color: #888; margin-top: 10px;">メニューに戻る</button>
     </div>
 
-    <!-- 4. 対戦メイン画面 -->
     <div id="game-screen" class="hidden">
       <h2 id="room-title">部屋ID: ----</h2>
       <div id="game-status" style="font-weight: bold; color: #555;">相手の参加を待っています...</div>
@@ -194,7 +188,6 @@
           <button id="btn-send-word" style="background-color: #34a853;">送信</button>
         </div>
 
-        <!-- 審議とリタイアボタン -->
         <div class="action-group">
           <div style="flex: 1;">
             <button id="btn-shingi" class="btn-action" style="background-color: #ff9800;">🤔 審議 (ダウト)</button>
@@ -261,30 +254,20 @@
     let unsubscribeRoom = null;
     let unsubscribeFriends = null;
 
-    // ─── 【新設】単語帳（辞書）データの読み込み処理 ───
-    // パブリックに公開されている約6万語の日本語ひらがな辞書JSONを読み込みます
     let wordDictionary = new Set();
     async function loadDictionary() {
       try {
         const response = await fetch("https://raw.githubusercontent.com/misono/misono-tango-dataset/master/tango.json");
         const data = await response.json();
-        
-        // 辞書データをSetオブジェクトに格納して高速検索できるようにする
-        // データの形式に合わせて、ひらがな表記の部分を抽出して登録
-        data.forEach(item => {
-          if (item.kana) {
-            wordDictionary.add(item.kana);
-          }
-        });
+        data.forEach(item => { if (item.kana) { wordDictionary.add(item.kana); } });
         dictStatus.textContent = `✅ 辞書読込完了 (${wordDictionary.size}語)`;
         dictStatus.style.color = "#34a853";
       } catch (error) {
-        console.error("辞書の読み込みに失敗しました:", error);
-        dictStatus.textContent = "⚠️ 辞書の読み込みに失敗（繋がり判定のみで動作します）";
+        console.error(error);
+        dictStatus.textContent = "⚠️ 辞書の読み込みに失敗";
         dictStatus.style.color = "#ea4335";
       }
     }
-    // アプリ起動時にバックグラウンドで辞書を読み込む
     loadDictionary();
 
     document.getElementById("btn-login").addEventListener("click", async () => {
@@ -298,12 +281,34 @@
       }
     });
 
+    // 4桁タグ生成ヘルパー
+    function generateUserTag() {
+      return Math.floor(1000 + Math.random() * 9000).toString();
+    }
+
+    // ─── 【バグ自動修復付き】ユーザーチェック処理 ───
     async function checkUserRegistered(uid) {
       const userRef = doc(db, "users", uid);
       const userSnap = await getDoc(userRef);
 
       if (userSnap.exists()) {
-        const userData = userSnap.data();
+        let userData = userSnap.data();
+        
+        // ★自動修復ロジック★ 古いデータにuserTagやfriends配列がない場合、その場で補完してDBを更新する
+        if (!userData.userTag || !userData.friends) {
+          const autoTag = userData.userTag || generateUserTag();
+          const autoFriends = userData.friends || [];
+          
+          await updateDoc(userRef, {
+            userTag: autoTag,
+            friends: autoFriends
+          });
+          
+          // 最新状態のデータを読み直す
+          const freshSnap = await getDoc(userRef);
+          userData = freshSnap.data();
+        }
+
         showScreen("menu");
         userDisplay.textContent = `プレイヤー: ${userData.username}#${userData.userTag}`;
         friendMyTag.textContent = `あなたのタグ: ${userData.username}#${userData.userTag}`;
@@ -311,10 +316,6 @@
       } else {
         showScreen("register");
       }
-    }
-
-    function generateUserTag() {
-      return Math.floor(1000 + Math.random() * 9000).toString();
     }
 
     document.getElementById("btn-register").addEventListener("click", async () => {
@@ -390,8 +391,8 @@
     function generateRoomId() {
       const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
       let result = "";
-      for (let i = 0; i < 4; i++) { result += chars.charAt(Math.floor(Math.random() * chars.length)); }
-      return result;
+      for (let i = 0; i < 4; i++) { chars.charAt(Math.floor(Math.random() * chars.length)); }
+      return Math.floor(1000 + Math.random() * 9000).toString(); // 4桁の数字部屋に変更
     }
 
     document.getElementById("btn-create-room").addEventListener("click", async () => {
@@ -425,7 +426,7 @@
 
     document.getElementById("btn-join-room").addEventListener("click", async () => {
       if (!currentUid) return alert("ログインしてください");
-      const targetRoomId = roomIdInput.value.trim().toUpperCase();
+      const targetRoomId = roomIdInput.value.trim();
       if (!targetRoomId || targetRoomId.length !== 4) return alert("正しい4桁の部屋IDを入力してください");
       const roomRef = doc(db, "rooms", targetRoomId);
       try {
@@ -487,21 +488,13 @@
       });
     }
 
-    // ─── 変更：ワード送信処理（文字数制限撤廃 ＆ 辞書実在判定を追加） ───
     btnSendWord.addEventListener("click", async () => {
       let input = shiritoriInput.value.trim();
       if (!input) return;
+      if (!/^[ぁ-んー]+$/.test(input)) return alert("ひらがなだけで入力してください！");
 
-      if (!/^[ぁ-んー]+$/.test(input)) {
-        return alert("ひらがなだけで入力してください！");
-      }
-
-      // 【変更】2文字以上の文字数制限は削除しました（1文字でも送信可能）
-
-      // 【新設】単語帳（辞書）に存在するか判定
-      // 辞書の読み込みが完了しており、かつ入力された単語が辞書に載っていない場合
       if (wordDictionary.size > 0 && !wordDictionary.has(input)) {
-        return alert(`「${input}」は単語帳に登録されていません！実在する言葉を入力してください。`);
+        return alert(`「${input}」は単語帳に登録されていません！`);
       }
 
       const roomRef = doc(db, "rooms", activeRoomId);
