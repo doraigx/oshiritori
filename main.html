@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりアプリ - オンライン対戦招待版</title>
+  <title>しりとりアプリ - 確定オンライン＆招待版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -183,7 +183,7 @@
       <h2>フレンド・オンライン</h2>
       <div class="user-info" id="friend-my-tag" style="color: #9c27b0;">あなたのタグ: ----</div>
       
-      <h3>フレンドリスト（オンライン優先）</h3>
+      <h3>フレンドリスト（30秒生存判定付き）</h3>
       <div id="friend-list-container" class="friend-list">フレンドはいません</div>
 
       <h3>フレンド追加</h3>
@@ -228,7 +228,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDFeeG0cXom0TBmUngUDbBf_0CqKVRqKwg",
@@ -278,6 +278,7 @@
     let unsubscribeInvite = null;
 
     let countdownInterval = null;
+    let heartBeatInterval = null;
     let remainingTime = 15;
 
     document.getElementById("btn-login").addEventListener("click", async () => {
@@ -312,8 +313,8 @@
         userDisplay.textContent = `プレイヤー: ${userData.username}#${userData.userTag}`;
         friendMyTag.textContent = `あなたのタグ: ${userData.username}#${userData.userTag}`;
         
-        // ─── オンライン状態をON ＆ 招待・フレンドの監視開始 ───
-        await updateDoc(userRef, { status: "online", inviteRoomId: "" });
+        // ─── 強化：生存シグナル（ハートビート）を開始 ───
+        startHeartbeat();
         setupFriendsListener();
         setupInviteListener();
       } else {
@@ -333,19 +334,32 @@
           username: name,
           userTag: tag,
           friends: [],
-          status: "online",
-          inviteRoomId: "",
+          lastActive: serverTimestamp(), // 生存シグナル
           createdAt: new Date()
         });
         showScreen("menu");
         userDisplay.textContent = `プレイヤー: ${name}#${tag}`;
         friendMyTag.textContent = `あなたのタグ: ${name}#${tag}`;
+        startHeartbeat();
         setupFriendsListener();
         setupInviteListener();
       } catch (error) {
         console.error(error);
       }
     });
+
+    // ─── 強化：10秒に1回データベースに「生きてるよ」と書き込む（生存判定用） ───
+    function startHeartbeat() {
+      clearInterval(heartBeatInterval);
+      // 最初に1回送信
+      updateDoc(doc(db, "users", currentUid), { lastActive: serverTimestamp() });
+      // その後10秒毎に送信
+      heartBeatInterval = setInterval(() => {
+        if (currentUid) {
+          updateDoc(doc(db, "users", currentUid), { lastActive: serverTimestamp() });
+        }
+      }, 10000);
+    }
 
     document.getElementById("btn-add-friend").addEventListener("click", async () => {
       const searchText = friendSearchInput.value.trim();
@@ -368,7 +382,7 @@
       }
     });
 
-    // ─── 【新設】フレンド一覧 ＆ 各自のオンライン状況をリアルタイム同期 ───
+    // ─── 確定解決：各自の「最新の生存確認時間」をチェックして、30秒以内ならオンラインと判定 ───
     function setupFriendsListener() {
       if (unsubscribeFriends) unsubscribeFriends();
       unsubscribeFriends = onSnapshot(doc(db, "users", currentUid), async (snapshot) => {
@@ -380,34 +394,45 @@
           return;
         }
 
-        // フレンド全員の最新データを取得してリスト化
         let friendDataList = [];
         for (const fUid of friendUids) {
           const fSnap = await getDoc(doc(db, "users", fUid));
           if (fSnap.exists()) {
-            friendDataList.push(fSnap.data());
+            const fData = fSnap.data();
+            
+            // 現在時刻と、フレンドが最後に合図を出した時間（lastActive）の差を計算
+            let isOnline = false;
+            if (fData.lastActive) {
+              const lastActiveTime = fData.lastActive.toDate().getTime();
+              const nowTime = new Date().getTime();
+              // 30秒以内に合図を出していれば確実にオンライン
+              if (nowTime - lastActiveTime < 30000) {
+                isOnline = true;
+              }
+            }
+            fData.calculatedOnline = isOnline; // 計算した結果を仮保存
+            friendDataList.push(fData);
           }
         }
 
-        // オンラインのフレンドが上に来るように並び替え
-        friendDataList.sort((a, b) => (b.status === "online" ? 1 : 0) - (a.status === "online" ? 1 : 0));
+        // オンラインのフレンドを上に並び替え
+        friendDataList.sort((a, b) => b.calculatedOnline - a.calculatedOnline);
 
         friendListContainer.innerHTML = "";
         friendDataList.forEach((fData) => {
-          const isOnline = fData.status === "online";
           const itemDiv = document.createElement("div");
           itemDiv.className = "friend-item";
           
-          // 名前・タグ・状態バッジの作成
           itemDiv.innerHTML = `
             <div>
               👤 ${fData.username}#${fData.userTag}
-              <span class="status-badge ${isOnline ? 'status-online' : 'status-offline'}">${isOnline ? '● online' : '○ offline'}</span>
+              <span class="status-badge ${fData.calculatedOnline ? 'status-online' : 'status-offline'}">
+                ${fData.calculatedOnline ? '● online' : '○ offline'}
+              </span>
             </div>
           `;
 
-          // オンラインのフレンドの横にだけ「対戦申込」ボタンを作る
-          if (isOnline) {
+          if (fData.calculatedOnline) {
             const inviteBtn = document.createElement("button");
             inviteBtn.className = "btn-invite";
             inviteBtn.textContent = "対戦申込";
@@ -420,11 +445,14 @@
       });
     }
 
-    // ─── 【新設】オンラインフレンドへ直接対戦を申し込む（部屋を作って相手に通知） ───
+    // ─── 確定解決：相手の「invites（招待状）」という専用のフォルダ（サブコレクション）に直接投げ込む ───
     async function sendMatchInvite(targetUid, targetName) {
-      if (!confirm(`${targetName} さんに対戦を申し込みますか？\n（相手が承認すると自動で試合が始まります）`)) return;
+      // 自分の最新の名前を取得
+      const mySnap = await getDoc(doc(db, "users", currentUid));
+      const myName = mySnap.exists() ? mySnap.data().username : "フレンド";
+
+      if (!confirm(`${targetName} さんに対戦を申し込みますか？`)) return;
       
-      // 1. 自動で4桁の部屋を作成
       let roomId = Math.floor(1000 + Math.random() * 9000).toString();
       let roomRef = doc(db, "rooms", roomId);
       let roomSnap = await getDoc(roomRef);
@@ -444,83 +472,66 @@
         shingiCounts: { [currentUid]: 0 }
       });
 
-      // 2. 相手のデータにある「inviteRoomId」の空き地に、作った部屋IDを書き込んで通知を送る
-      const targetUserRef = doc(db, "users", targetUid);
-      await updateDoc(targetUserRef, {
-        inviteRoomId: roomId
+      // 相手の uid ➔ invites サブコレクションの中に新しくドキュメントを作る（これで確実にaddedイベントが発生）
+      const inviteRef = doc(collection(db, "users", targetUid, "invites"));
+      await setDoc(inviteRef, {
+        roomId: roomId,
+        hostName: myName,
+        createdAt: new Date()
       });
 
-      // 3. 自分をゲーム画面に移行させて待機させる
       activeRoomId = roomId;
       roomTitle.textContent = `部屋ID: ${roomId}`;
       showScreen("game");
       watchRoom(roomId);
     }
 
-    // ─── 【新設】相手からの対戦申し込み（招待）をずっと見張る機能 ───
+    // ─── 確定解決：自分宛ての招待状フォルダをずっと監視（追加を100%キャッチ） ───
     function setupInviteListener() {
       if (unsubscribeInvite) unsubscribeInvite();
-      unsubscribeInvite = onSnapshot(doc(db, "users", currentUid), async (snapshot) => {
-        if (!snapshot.exists()) return;
-        const myData = snapshot.data();
-        
-        // もし inviteRoomId に部屋IDが書き込まれていたら（＝誰かが対戦申込をしてくれたら）
-        if (myData.inviteRoomId && myData.inviteRoomId !== "") {
-          const roomId = myData.inviteRoomId;
-          
-          // 部屋情報を取得して、誰が誘ってきたか名前を特定する
-          const roomSnap = await getDoc(doc(db, "rooms", roomId));
-          if (!roomSnap.exists()) {
-            // 既に部屋が消えていたらリセット
-            await updateDoc(doc(db, "users", currentUid), { inviteRoomId: "" });
-            return;
-          }
-          
-          const roomData = roomSnap.data();
-          const hostUid = roomData.players[0];
-          const hostSnap = await getDoc(doc(db, "users", hostUid));
-          const hostName = hostSnap.exists() ? hostSnap.data().username : "フレンド";
+      
+      const invitesRef = collection(db, "users", currentUid, "invites");
+      unsubscribeInvite = onSnapshot(invitesRef, (snapshot) => {
+        snapshot.docChanges().forEach(async (change) => {
+          // 新しく招待状がフォルダに追加された（added）瞬間を完全にキャッチ
+          if (change.type === "added") {
+            const inviteData = change.doc.data();
+            const roomId = inviteData.roomId;
 
-          // 通知ポップアップを表示
-          const accept = confirm(`⚔️ 対戦のお誘い ⚔️\n\n${hostName} さんからしりとりの対戦申し込みが届きました！\n参戦しますか？`);
-          
-          const myUserRef = doc(db, "users", currentUid);
-          if (accept) {
-            // 「はい」の場合：申込部屋に入室する
-            const roomRef = doc(db, "rooms", roomId);
-            const updatedShingiCounts = { ...roomData.shingiCounts, [currentUid]: 0 };
+            // 届いた招待状は画面を汚さないように即座にデータベースから削除（ゴミを残さない）
+            await deleteDoc(change.doc.ref);
+
+            // 部屋がまだ残っているか安全確認
+            const roomSnap = await getDoc(doc(db, "rooms", roomId));
+            if (!roomSnap.exists()) return; 
+
+            const accept = confirm(`⚔️ 対戦の申し込み ⚔️\n\n${inviteData.hostName} さんからしりとりの申し込みが届きました！\n参戦しますか？`);
             
-            await updateDoc(roomRef, {
-              players: arrayUnion(currentUid),
-              shingiCounts: updatedShingiCounts,
-              status: "playing"
-            });
-            
-            // 自分の通知欄を綺麗にしてゲーム画面へ
-            await updateDoc(myUserRef, { inviteRoomId: "" });
-            activeRoomId = roomId;
-            roomTitle.textContent = `部屋ID: ${roomId}`;
-            showScreen("game");
-            watchRoom(roomId);
-          } else {
-            // 「いいえ」の場合：通知欄を空にして申し込みを拒否する
-            await updateDoc(myUserRef, { inviteRoomId: "" });
+            if (accept) {
+              const roomRef = doc(db, "rooms", roomId);
+              const roomData = roomSnap.data();
+              const updatedShingiCounts = { ...roomData.shingiCounts, [currentUid]: 0 };
+              
+              await updateDoc(roomRef, {
+                players: arrayUnion(currentUid),
+                shingiCounts: updatedShingiCounts,
+                status: "playing"
+              });
+              
+              activeRoomId = roomId;
+              roomTitle.textContent = `部屋ID: ${roomId}`;
+              showScreen("game");
+              watchRoom(roomId);
+            }
           }
-        }
+        });
       });
     }
-
-    // アプリを閉じるか別ページに行くときにオンライン状態を解除する（気休め程度ですが有効）
-    window.addEventListener("beforeunload", () => {
-      if (currentUid) {
-        updateDoc(doc(db, "users", currentUid), { status: "offline" });
-      }
-    });
 
     document.getElementById("btn-to-friend").addEventListener("click", () => showScreen("friend"));
     document.getElementById("btn-friend-back").addEventListener("click", () => showScreen("menu"));
 
-    // ─── 既存のゲーム制御ロジック ───
+    // ─── ゲーム制御ロジック ───
     function startLocalTimer(roomData) {
       clearInterval(countdownInterval);
       remainingTime = 15;
@@ -699,6 +710,7 @@
       if (screenType === "login") loginScreen.classList.remove("hidden");
       if (screenType === "register") registerScreen.classList.remove("hidden");
       if (screenType === "menu") menuScreen.classList.remove("hidden");
+      if (screenType === "game") gameScreen.githubusercontent.classList.remove("hidden");
       if (screenType === "game") gameScreen.classList.remove("hidden");
       if (screenType === "friend") friendScreen.classList.remove("hidden");
     }
