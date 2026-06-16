@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりポータル - 審議ボタン完全修正版</title>
+  <title>しりとりポータル - 審議ルール完全修正版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -63,6 +63,12 @@
     }
     button:hover { background-color: #357ae8; }
     button:active { transform: scale(0.98); }
+    
+    button:disabled {
+      background-color: #cccccc !important;
+      cursor: not-allowed;
+      transform: none !important;
+    }
     
     input[type="text"], select {
       box-sizing: border-box;
@@ -267,7 +273,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDFeeG0cXom0TBmUngUDbBf_0CqKVRqKwg",
@@ -892,15 +898,15 @@
           const shingiRemaining = 10 - myUsedShingi;
           shingiCounter.textContent = `審議残り: ${shingiRemaining >= 0 ? shingiRemaining : 0}回`;
 
-          // ─── 【重要修正】審議ボタンの有効・無効化の条件を正しいロジックに反転 ───
+          // ─── 【重要修正】審議ボタンの有効化ロジックを完全解決 ───
           if (data.currentTurn === currentUid) {
             turnIndicator.textContent = "あなたの番です！"; turnIndicator.className = "turn-badge my-turn";
             shiritoriInput.disabled = false; btnSendWord.disabled = false; 
-            btnShingi.disabled = false; // 自分の番（相手が打ち終わった直後）だからこそ審議できる！
+            btnShingi.disabled = true;  // 中央にあるのは相手の単語。自分の入力中なので、今さら前回の相手の言葉にはダウトできない
           } else {
             turnIndicator.textContent = "相手の番です..."; turnIndicator.className = "turn-badge enemy-turn";
             shiritoriInput.disabled = true; btnSendWord.disabled = true; 
-            btnShingi.disabled = true;  // 相手の入力待ちは、自分が送信した直後なので審議できない
+            btnShingi.disabled = false; // 相手の番（＝自分が送信した直後）。中央に表示されている自分の言葉に対して、相手側から異議を申し立てられるのを待つ状態
           }
           startLocalTimer(data);
         } 
@@ -981,13 +987,14 @@
       } catch (error) { console.error(error); }
     });
 
+    // ─── 修正：審議ボタン（相手の画面で押された時、送信側＝自分の番に差し戻す） ───
     btnShingi.addEventListener("click", async () => {
       const roomRef = doc(db, "rooms", activeRoomId);
       try {
         const roomSnap = await getDoc(roomRef);
         const roomData = roomSnap.data();
         const currentShingiCount = roomData.shingiCounts && roomData.shingiCounts[currentUid] ? roomData.shingiCounts[currentUid] : 0;
-        const nextTurnUid = roomData.players.find(uid => uid !== currentUid);
+        const nextTurnUid = roomData.players.find(uid => uid !== currentUid); // 相手のUID
 
         if (!confirm(`相手が出した単語「${roomData.lastWord}」を物言いにし、やり直しを求めますか？`)) return;
 
@@ -998,8 +1005,12 @@
         if (wordsList.length > 1) { wordsList.pop(); }
         const rolledBackWord = wordsList[wordsList.length - 1] || "しりとり";
 
+        // 【修正点】ターンを自分ではなく「相手（nextTurnUid）」に戻す
         await updateDoc(roomRef, {
-          shingiCounts: updatedCounts, currentTurn: nextTurnUid, lastWord: rolledBackWord, usedWords: wordsList
+          shingiCounts: updatedCounts, 
+          currentTurn: nextTurnUid, // 相手にターンを突き返す
+          lastWord: rolledBackWord, 
+          usedWords: wordsList
         });
 
         alert("審議が通り、相手にターンが差し戻されました！次の単語を待っています。");
