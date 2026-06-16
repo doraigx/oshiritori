@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりポータル - フル機能完全修正版</title>
+  <title>しりとりポータル - マッチング修正版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -162,6 +162,7 @@
     
     <div id="loading-status">接続チェック中...</div>
 
+    <!-- 招待通知エリア -->
     <div id="invite-notification-zone" class="invite-alert-box hidden">
       <span id="invite-msg-text">〇〇から対戦申し込み！</span>
       <div class="action-group" style="margin-top: 10px;">
@@ -170,17 +171,20 @@
       </div>
     </div>
 
+    <!-- 1. 初期ログイン画面 -->
     <div id="login-screen" class="hidden">
       <p>ゲームを始めるにはGoogleアカウントでログインしてください。</p>
       <button id="btn-login">Googleでログイン</button>
     </div>
 
+    <!-- 2. 初回のみ表示されるユーザーネーム登録画面 -->
     <div id="register-screen" class="hidden">
       <p>ユーザーネームを決めてください</p>
       <input type="text" id="username-input" placeholder="例: どーらい">
       <button id="btn-register">登録して次へ</button>
     </div>
 
+    <!-- 3. ログイン完了後のメインメニュー画面 -->
     <div id="menu-screen" class="hidden">
       <div class="user-info">
         <span id="user-display">プレイヤー: ----</span>
@@ -217,6 +221,7 @@
       </div>
     </div>
 
+    <!-- 5. フレンド管理・オンライン画面 -->
     <div id="friend-screen" class="hidden">
       <h2>フレンド・オンライン</h2>
       <div class="user-info" id="friend-my-tag" style="color: #9c27b0; font-weight: bold; justify-content: center;">あなたのタグ: ----</div>
@@ -233,10 +238,12 @@
       <button id="btn-friend-back" style="background-color: #888; margin-top: 10px;">メニューに戻る</button>
     </div>
 
+    <!-- 4. 対戦メイン画面 -->
     <div id="game-screen" class="hidden">
       <h2 id="room-title">部屋ID: ----</h2>
       <div id="game-status" style="font-weight: bold; color: #555;">相手の参加を待っています...</div>
       
+      <!-- 招待取り消しボタン -->
       <button id="btn-cancel-invite" class="hidden" style="background-color: #e0a800; color: white; margin-top: 10px; margin-bottom: 10px; font-size: 16px; padding: 12px; width: 100%; border-radius: 6px;">🏳️ 招待を取り消す</button>
 
       <div id="shiritori-area" class="hidden">
@@ -260,6 +267,7 @@
         </div>
       </div>
       
+      <!-- メニューに戻るボタン -->
       <button id="btn-leave" style="background-color: #888; margin-top: 20px;">メニューに戻る</button>
     </div>
   </div>
@@ -345,7 +353,7 @@
     let currentSentInviteId = null;   
     let currentSentInviteTargetUid = null; 
 
-    const smallToLargeMap = { 'ゃ': 'や', 'ゅ': 'ゆ', 'ょ': 'よ', 'っ': 'つ' };
+    const smallToLargeMap = { 'ゃ': '原', 'ゅ': 'ゆ', 'ょ': 'よ', 'っ': 'つ' };
 
     onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -549,17 +557,21 @@
         if (targetRoomDoc) {
           const roomId = targetRoomDoc.id;
           const roomData = targetRoomDoc.data();
-          const updatedShingiCounts = { ...roomData.shingiCounts, [currentUid]: 0 };
           
-          await updateDoc(doc(db, "rooms", roomId), {
-            players: arrayUnion(currentUid),
-            shingiCounts: updatedShingiCounts,
-            status: "playing"
-          });
-          
-          activeRoomId = roomId;
-          watchRoom(roomId);
-          return;
+          // 【強化点】一瞬の差で他の人に先を越されていないか再チェック（満員判定）
+          if (roomData.players.length >= 2 || roomData.status !== "waiting") {
+            // 先を越されていた場合は、自分がホストになって部屋を作るフローへ流す
+          } else {
+            const updatedShingiCounts = { ...roomData.shingiCounts, [currentUid]: 0 };
+            await updateDoc(doc(db, "rooms", roomId), {
+              players: arrayUnion(currentUid),
+              shingiCounts: updatedShingiCounts,
+              status: "playing"
+            });
+            activeRoomId = roomId;
+            watchRoom(roomId);
+            return;
+          }
         }
 
         let roomId = "FREE_" + Math.floor(1000 + Math.random() * 9000).toString();
@@ -708,7 +720,6 @@
         snapshot.docChanges().forEach(async (change) => {
           if (change.type === "added") {
             const inviteData = change.doc.data();
-            // 【確定強化】変数依存ではなく、ドキュメントの値を確実にキープ
             const targetInviteRoomId = inviteData.roomId.toUpperCase();
             const currentInviteDocRef = change.doc.ref;
 
@@ -717,7 +728,6 @@
 
             inviteMsgText.textContent = `⚔️ ${inviteData.hostName} から対戦申し込みが届きました！`;
             
-            // ─── 【重要修正】コールバック発火時の変数消失をクロージャで完全防衛 ───
             btnAcceptInvite.onclick = async () => {
               inviteZone.classList.add("hidden");
               await deleteDoc(currentInviteDocRef); 
@@ -879,7 +889,7 @@
         } 
         else if (data.status === "finished") {
           clearInterval(countdownInterval);
-          if (unsubscribeRoom) unsubscribeRoom();
+          if (unsubscribeRoom) { unsubscribeRoom(); unsubscribeRoom = null; } // 【強化点】即時監視解除
           btnCancelInvite.classList.add("hidden");
           btnLeaveRoom.classList.remove("hidden");
 
@@ -902,6 +912,7 @@
           }
           currentSentInviteId = null;
           currentSentInviteTargetUid = null;
+          activeRoomId = null; // ルームID初期化
           showScreen("menu");
         }
       });
@@ -994,15 +1005,24 @@
       } catch (error) { console.error(error); }
     });
 
+    // ─── 【重要修正】メニューに戻るボタンを押した時の「待機部屋削除」と「監視強制カット」 ───
     document.getElementById("btn-leave").addEventListener("click", async () => {
       clearInterval(countdownInterval);
+      
       if (activeRoomId) {
         const roomRef = doc(db, "rooms", activeRoomId);
         try {
           const roomSnap = await getDoc(roomRef);
           if (roomSnap.exists()) {
             const roomData = roomSnap.data();
-            if (roomData.status === "playing") {
+            
+            // ① 【確定強化】オートマッチ待機中（waiting）だった場合は、データベースから部屋をごと完全に消去して跡形もなくす
+            if (roomData.status === "waiting" && activeRoomId.startsWith("FREE_")) {
+              if (unsubscribeRoom) { unsubscribeRoom(); unsubscribeRoom = null; } // 即時切断
+              await deleteDoc(roomRef);
+            } 
+            // ② 試合中（playing）だった場合は、これまで通りペナルティ処理
+            else if (roomData.status === "playing") {
               const enemyUid = roomData.players.find(uid => uid !== currentUid);
               const enemySnap = await getDoc(doc(db, "users", enemyUid));
               const enemyName = enemySnap.exists() ? enemySnap.data().username : "対戦相手";
@@ -1013,7 +1033,10 @@
           }
         } catch (e) { console.error(e); }
       }
+      
+      // ③ メニューに戻る瞬間に、今見ている部屋のリスナー監視を完全に断ち切る
       if (unsubscribeRoom) { unsubscribeRoom(); unsubscribeRoom = null; }
+      activeRoomId = null;
       showScreen("menu");
     });
 
