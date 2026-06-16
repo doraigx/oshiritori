@@ -154,7 +154,6 @@
   <div class="container">
     <h1>しりとりポータル</h1>
 
-    <!-- 招待通知エリア -->
     <div id="invite-notification-zone" class="invite-alert-box hidden">
       <span id="invite-msg-text">〇〇から対戦申し込み！</span>
       <div class="action-group" style="margin-top: 10px;">
@@ -163,20 +162,17 @@
       </div>
     </div>
 
-    <!-- 1. 初期ログイン画面 -->
     <div id="login-screen">
       <p>ゲームを始めるにはGoogleアカウントでログインしてください。</p>
       <button id="btn-login">Googleでログイン</button>
     </div>
 
-    <!-- 2. 初回のみ表示されるユーザーネーム登録画面 -->
     <div id="register-screen" class="hidden">
       <p>ユーザーネームを決めてください</p>
       <input type="text" id="username-input" placeholder="例: どーらい">
       <button id="btn-register">登録して次へ</button>
     </div>
 
-    <!-- 3. ログイン完了後のメインメニュー画面 -->
     <div id="menu-screen" class="hidden">
       <div class="user-info" id="user-display"></div>
       <button id="btn-to-friend" style="background-color: #9c27b0; margin-bottom: 15px; padding: 8px;">👥 フレンド画面・オンラインリスト</button>
@@ -200,7 +196,6 @@
       </div>
     </div>
 
-    <!-- 5. フレンド管理・オンライン画面 -->
     <div id="friend-screen" class="hidden">
       <h2>フレンド・オンライン</h2>
       <div class="user-info" id="friend-my-tag" style="color: #9c27b0;">あなたのタグ: ----</div>
@@ -217,7 +212,6 @@
       <button id="btn-friend-back" style="background-color: #888; margin-top: 10px;">メニューに戻る</button>
     </div>
 
-    <!-- 4. 対戦メイン画面 -->
     <div id="game-screen" class="hidden">
       <h2 id="room-title">部屋ID: ----</h2>
       <div id="game-status" style="font-weight: bold; color: #555;">相手の参加を待っています...</div>
@@ -250,7 +244,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDFeeG0cXom0TBmUngUDbBf_0CqKVRqKwg",
@@ -311,7 +305,7 @@
     let incomingRoomId = null;
     let isFriendMatchMode = false;
     let currentRoomPlayers = [];
-    let isHistorySaved = false; // 重複登録ガード用
+    let isHistorySaved = false;
 
     document.getElementById("btn-login").addEventListener("click", async () => {
       try {
@@ -377,21 +371,38 @@
       }, 10000);
     }
 
+    // ─── 修正（確定枠）：インデックス不要で100%動くローカルソート履歴機能 ───
     async function loadGlobalHistory() {
       try {
         const historyRef = collection(db, "histories");
-        const q = query(historyRef, where("uids", "array-contains", currentUid), orderBy("timestamp", "desc"), limit(5));
+        // 単一条件（whereのみ）に変更し、インデックスエラーを根本から排除
+        const q = query(historyRef, where("uids", "array-contains", currentUid));
         
         onSnapshot(q, async (snapshot) => {
           if (snapshot.empty) {
             historyListContainer.innerHTML = "<div class='history-card'>履歴はありません</div>";
             return;
           }
+
+          // 全データを一度配列に引き抜く
+          let rawList = [];
+          snapshot.forEach(doc => {
+            rawList.push(doc.data());
+          });
+
+          // ブラウザ（JavaScript）側で時間の新しい順（降順）に並び替える
+          rawList.sort((a, b) => {
+            const timeA = a.timestamp ? a.timestamp.toDate().getTime() : 0;
+            const timeB = b.timestamp ? b.timestamp.toDate().getTime() : 0;
+            return timeB - timeA;
+          });
+
+          // 直近5件のみを切り抜く
+          const displayList = rawList.slice(0, 5);
+
           let html = "";
-          for (const historyDoc of snapshot.docs) {
-            const hData = historyDoc.data();
+          for (const hData of displayList) {
             const isWin = hData.winnerUid === currentUid;
-            
             const enemyUid = hData.uids.find(id => id !== currentUid);
             const enemySnap = await getDoc(doc(db, "users", enemyUid));
             const enemyName = enemySnap.exists() ? enemySnap.data().username : "不明なプレイヤー";
@@ -474,24 +485,6 @@
       }
     });
 
-    document.getElementById("btn-add-friend").addEventListener("click", async () => {
-      const searchText = friendSearchInput.value.trim();
-      if (!searchText.includes("#")) return alert("「名前#4桁数字」の形式で入力してください。");
-      const [searchName, searchTag] = searchText.split("#");
-      try {
-        const usersRef = collection(db, "users");
-        const q = query(usersRef, where("username", "==", searchName), where("userTag", "==", searchTag));
-        const querySnapshot = await getDocs(q);
-        if (querySnapshot.empty) return alert("指定されたユーザーが見つかりません。");
-        let targetUid = null;
-        querySnapshot.forEach((doc) => { targetUid = doc.id; });
-        if (targetUid === currentUid) return alert("自分自身は追加できません。");
-        await updateDoc(doc(db, "users", currentUid), { friends: arrayUnion(targetUid) });
-        alert(`フレンドを追加しました！`);
-        friendSearchInput.value = "";
-      } catch (error) { console.error(error); }
-    });
-
     function setupFriendsListener() {
       if (unsubscribeFriends) unsubscribeFriends();
       unsubscribeFriends = onSnapshot(doc(db, "users", currentUid), async (snapshot) => {
@@ -542,13 +535,6 @@
           });
         });
       });
-    }
-
-    function generateRoomId() {
-      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-      let result = "";
-      for (let i = 0; i < 4; i++) { result += chars.charAt(Math.floor(Math.random() * chars.length)); }
-      return result;
     }
 
     async function sendMatchInvite(targetUid, targetName) {
@@ -628,7 +614,7 @@
     document.getElementById("btn-create-room").addEventListener("click", async () => {
       if (!currentUid) return alert("ログインしてください");
       isFriendMatchMode = false;
-      let roomId = generateUserTag(); // 通常作成時も4桁
+      let roomId = generateUserTag();
       let roomRef = doc(db, "rooms", roomId);
       try {
         let roomSnap = await getDoc(roomRef);
@@ -697,7 +683,7 @@
 
     function watchRoom(roomId) {
       if (unsubscribeRoom) unsubscribeRoom();
-      isHistorySaved = false; // 新しい部屋に入ったらガード解除
+      isHistorySaved = false;
       
       unsubscribeRoom = onSnapshot(doc(db, "rooms", roomId), (snapshot) => {
         if (!snapshot.exists()) return;
@@ -741,11 +727,8 @@
           } else {
             alert(`ゲーム終了！ 勝者: ${data.winnerName} 👑\n理由: ${data.finishReason}`);
             
-            // ─── 修正：誰が部屋を終了させても確実に1試合につき1回履歴を保存する構造 ───
             if (!isHistorySaved && currentRoomPlayers.length === 2) {
-              isHistorySaved = true; // クライアント側での重複セーブガード
-              
-              // 部屋配列の「インデックス0」のプレイヤー端末のみがFirestoreへ保存リクエストを行う(サーバーの重複防止)
+              isHistorySaved = true;
               if (currentRoomPlayers[0] === currentUid) {
                 try {
                   setDoc(doc(collection(db, "histories")), {
@@ -774,7 +757,6 @@
         const roomData = roomSnap.data();
         const lastWord = roomData.lastWord; 
         
-        // ─── 新設：既出単語（重複）ルールチェック ───
         const usedWordsList = roomData.usedWords || ["しりとり"];
         if (usedWordsList.includes(input)) {
           return alert(`「${input}」はすでにこの試合で使われています！別の単語を出してください。`);
@@ -798,7 +780,6 @@
         
         const nextTurnUid = roomData.players.find(uid => uid !== currentUid);
         
-        // 単語を送信する際、usedWords配列に今の単語（input）を追加して更新する
         await updateDoc(roomRef, { 
           lastWord: input, 
           usedWords: arrayUnion(input), 
