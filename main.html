@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりポータル - フル機能修正版</title>
+  <title>しりとりポータル - 完全版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -50,7 +50,7 @@
     }
     hr { border: 0; border-top: 1px solid #eee; margin: 20px 0; }
     .hidden { display: none; }
-    .user-info { margin-bottom: 20px; font-weight: bold; color: #555; text-align: left; }
+    .user-info { margin-bottom: 20px; font-weight: bold; color: #555; text-align: left; display: flex; justify-content: space-between; align-items: center; }
     
     .flex-group {
       display: flex;
@@ -147,6 +147,8 @@
     }
     .win-text { color: #137333; font-weight: bold; }
     .lose-text { color: #c5221f; font-weight: bold; }
+    
+    .btn-small-edit { background-color: #666; font-size: 11px; padding: 4px 8px; width: auto; border-radius: 4px; margin-left: 8px; }
   </style>
 </head>
 <body>
@@ -174,7 +176,10 @@
     </div>
 
     <div id="menu-screen" class="hidden">
-      <div class="user-info" id="user-display"></div>
+      <div class="user-info">
+        <span id="user-display">プレイヤー: ----</span>
+        <button id="btn-edit-name" class="btn-small-edit">✏️ 名前変更</button>
+      </div>
       <button id="btn-to-friend" style="background-color: #9c27b0; margin-bottom: 15px; padding: 8px;">👥 フレンド画面・オンラインリスト</button>
       <hr>
       
@@ -198,7 +203,7 @@
 
     <div id="friend-screen" class="hidden">
       <h2>フレンド・オンライン</h2>
-      <div class="user-info" id="friend-my-tag" style="color: #9c27b0;">あなたのタグ: ----</div>
+      <div class="user-info" id="friend-my-tag" style="color: #9c27b0; font-weight: bold;">あなたのタグ: ----</div>
       
       <h3>フレンドリスト（名前タップで戦績確認）</h3>
       <div id="friend-list-container" class="friend-list">フレンドはいません</div>
@@ -244,7 +249,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDFeeG0cXom0TBmUngUDbBf_0CqKVRqKwg",
@@ -307,13 +312,17 @@
     let currentRoomPlayers = [];
     let isHistorySaved = false;
 
-    // ─── 4桁の部屋IDを生成するコア関数 ───
+    // 小文字を大文字に変換するマップ（ごきしょ➔ようかん 対策）
+    const smallToLargeMap = { 'ゃ': 'や', 'ゅ': 'ゆ', 'ょ': 'よ', 'っ': 'つ' };
+
     function generateRoomId() {
       const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
       let result = "";
       for (let i = 0; i < 4; i++) { result += chars.charAt(Math.floor(Math.random() * chars.length)); }
       return result;
     }
+
+    function generateUserTag() { return Math.floor(1000 + Math.random() * 9000).toString(); }
 
     document.getElementById("btn-login").addEventListener("click", async () => {
       try {
@@ -325,8 +334,6 @@
         alert("ログインエラーが発生しました。");
       }
     });
-
-    function generateUserTag() { return Math.floor(1000 + Math.random() * 9000).toString(); }
 
     async function checkUserRegistered(uid) {
       const userRef = doc(db, "users", uid);
@@ -371,6 +378,29 @@
       } catch (error) { console.error(error); }
     });
 
+    // ─── 新設：プレイヤーネームの変更機能 ───
+    document.getElementById("btn-edit-name").addEventListener("click", async () => {
+      const oldSnap = await getDoc(doc(db, "users", currentUid));
+      if (!oldSnap.exists()) return;
+      const oldData = oldSnap.data();
+
+      const newName = prompt("新しいユーザーネームを入力してください：", oldData.username);
+      if (newName === null) return; // キャンセル
+      const trimmedName = newName.trim();
+      
+      if (!trimmedName) return alert("名前を入力してください。");
+      if (trimmedName.includes("#")) return alert("名前に'#'は使用できません。");
+
+      try {
+        await updateDoc(doc(db, "users", currentUid), { username: trimmedName });
+        userDisplay.textContent = `プレイヤー: ${trimmedName}#${oldData.userTag}`;
+        alert("名前を変更しました！");
+      } catch (e) {
+        console.error(e);
+        alert("名前の変更に失敗しました。");
+      }
+    });
+
     function startHeartbeat() {
       clearInterval(heartBeatInterval);
       updateDoc(doc(db, "users", currentUid), { lastActive: serverTimestamp() });
@@ -389,25 +419,20 @@
             historyListContainer.innerHTML = "<div class='history-card'>履歴はありません</div>";
             return;
           }
-
           let rawList = [];
           snapshot.forEach(doc => { rawList.push(doc.data()); });
-
           rawList.sort((a, b) => {
             const timeA = a.timestamp ? a.timestamp.toDate().getTime() : 0;
             const timeB = b.timestamp ? b.timestamp.toDate().getTime() : 0;
             return timeB - timeA;
           });
-
           const displayList = rawList.slice(0, 5);
-
           let html = "";
           for (const hData of displayList) {
             const isWin = hData.winnerUid === currentUid;
             const enemyUid = hData.uids.find(id => id !== currentUid);
             const enemySnap = await getDoc(doc(db, "users", enemyUid));
             const enemyName = enemySnap.exists() ? enemySnap.data().username : "不明なプレイヤー";
-
             html += `
               <div class="history-card">
                 <span class="${isWin ? 'win-text' : 'lose-text'}">[${isWin ? 'WIN' : 'LOSE'}]</span> 
@@ -426,21 +451,18 @@
         const historyRef = collection(db, "histories");
         const q = query(historyRef, where("uids", "array-contains", currentUid));
         const snapshot = await getDocs(q);
-        
         let winCount = 0; let loseCount = 0;
-        
         snapshot.forEach((doc) => {
           const data = doc.data();
           if (data.uids.includes(fUid)) {
-            if (data.winnerUid === currentUid) winCount++;
-            else loseCount++;
+            if (data.winnerUid === currentUid) winCount++; else loseCount++;
           }
         });
-        
         alert(`📊 【${fName}#${fTag}】 との対戦戦績\n\nあなた: ${winCount} 勝 / ${loseCount} 敗`);
       } catch (e) { console.error(e); }
     }
 
+    // オートマッチング（自動対戦）機能
     document.getElementById("btn-free").addEventListener("click", async () => {
       isFriendMatchMode = false;
       gameStatus.textContent = "対戦相手を探しています...";
@@ -472,11 +494,9 @@
 
         let roomId = "FREE_" + Math.floor(1000 + Math.random() * 9000).toString();
         let roomRef = doc(db, "rooms", roomId);
-        
         await setDoc(roomRef, {
           roomId: roomId, status: "waiting", players: [currentUid], createdAt: serverTimestamp(), lastWord: "しりとり", usedWords: ["しりとり"], currentTurn: currentUid, shingiCounts: { [currentUid]: 0 }
         });
-        
         activeRoomId = roomId;
         watchRoom(roomId);
       } catch (error) {
@@ -516,7 +536,6 @@
         friendDataList.forEach((fData) => {
           const itemDiv = document.createElement("div");
           itemDiv.className = "friend-item";
-          
           itemDiv.innerHTML = `
             <div>
               👤 <span class="friend-name-link" id="link-${fData.uid}">${fData.username}</span>#${fData.userTag}
@@ -530,7 +549,6 @@
             itemDiv.appendChild(inviteBtn);
           }
           friendListContainer.appendChild(itemDiv);
-
           document.getElementById(`link-${fData.uid}`).addEventListener("click", () => {
             showFriendStats(fData.uid, fData.username, fData.userTag);
           });
@@ -538,13 +556,12 @@
       });
     }
 
-    // ─── 修正完了：定義されたgenerateRoomId()を確実に呼び出します ───
     async function sendMatchInvite(targetUid, targetName) {
       const mySnap = await getDoc(doc(db, "users", currentUid));
       const myName = mySnap.exists() ? mySnap.data().username : "フレンド";
       if (!confirm(`${targetName} さんに対戦を申し込みますか？`)) return;
       
-      let roomId = generateRoomId(); // ここでのクラッシュを完全に修正
+      let roomId = generateRoomId();
       let roomRef = doc(db, "rooms", roomId);
       let roomSnap = await getDoc(roomRef);
       while (roomSnap.exists()) {
@@ -649,10 +666,8 @@
 
     function startLocalTimer(roomData) {
       clearInterval(countdownInterval); remainingTime = 15; timerBox.textContent = `残り時間: ${remainingTime}秒`;
-      
       countdownInterval = setInterval(async () => {
         remainingTime--;
-        
         if (roomData.currentTurn === currentUid) {
           timerBox.textContent = `残り時間: ${remainingTime}秒`;
         } else {
@@ -666,7 +681,6 @@
             const enemyUid = roomData.players.find(uid => uid !== currentUid);
             const enemySnap = await getDoc(doc(db, "users", enemyUid));
             const enemyName = enemySnap.exists() ? enemySnap.data().username : "対戦相手";
-
             const mySnap = await getDoc(doc(db, "users", currentUid));
             const myName = mySnap.exists() ? mySnap.data().username : "あなた";
 
@@ -691,7 +705,6 @@
       unsubscribeRoom = onSnapshot(doc(db, "rooms", roomId), (snapshot) => {
         if (!snapshot.exists()) return;
         const data = snapshot.data();
-        
         if (data.players) currentRoomPlayers = data.players;
 
         if (data.status === "waiting") {
@@ -708,6 +721,7 @@
           else { roomTitle.textContent = `部屋ID: ${data.roomId}`; }
           shiritoriArea.classList.remove("hidden");
           currentWord.textContent = data.lastWord || "しりとり";
+          
           const myUsedShingi = data.shingiCounts && data.shingiCounts[currentUid] ? data.shingiCounts[currentUid] : 0;
           const shingiRemaining = 10 - myUsedShingi;
           shingiCounter.textContent = `審議残り: ${shingiRemaining >= 0 ? shingiRemaining : 0}回`;
@@ -729,16 +743,12 @@
             alert(`対戦申し込みを辞退されました。`);
           } else {
             alert(`ゲーム終了！ 勝者: ${data.winnerName} 👑\n理由: ${data.finishReason}`);
-            
             if (!isHistorySaved && currentRoomPlayers.length === 2) {
               isHistorySaved = true;
               if (currentRoomPlayers[0] === currentUid) {
                 try {
                   setDoc(doc(collection(db, "histories")), {
-                    uids: currentRoomPlayers,
-                    winnerUid: data.winnerUid,
-                    reason: data.finishReason,
-                    timestamp: serverTimestamp()
+                    uids: currentRoomPlayers, winnerUid: data.winnerUid, reason: data.finishReason, timestamp: serverTimestamp()
                   });
                 } catch (err) { console.error("履歴書き込み失敗:", err); }
               }
@@ -765,9 +775,19 @@
           return alert(`「${input}」はすでにこの試合で使われています！別の単語を出してください。`);
         }
 
+        // ─── 改善：ごきしょ➔ようかん などの小文字大文字の柔軟判定 ───
         let lastChar = lastWord.slice(-1);
         if (lastChar === "ー" && lastWord.length > 1) lastChar = lastWord.slice(-2, -1);
-        if (lastWord && lastChar !== input.charAt(0)) return alert(`「${lastChar}」から始まる単語を入力してください！`);
+        
+        // 前の文字の末尾が小文字（ゃゅょっ）なら、大文字に補正して判定する
+        let requiredStartChar = lastChar;
+        if (smallToLargeMap[lastChar]) {
+          requiredStartChar = smallToLargeMap[lastChar];
+        }
+
+        if (lastWord && requiredStartChar !== input.charAt(0)) {
+          return alert(`「${requiredStartChar}」から始まる単語を入力してください！`);
+        }
 
         clearInterval(countdownInterval);
         const enemyUid = roomData.players.find(uid => uid !== currentUid);
@@ -782,39 +802,44 @@
         }
         
         const nextTurnUid = roomData.players.find(uid => uid !== currentUid);
-        
         await updateDoc(roomRef, { 
-          lastWord: input, 
-          usedWords: arrayUnion(input), 
-          currentTurn: nextTurnUid, 
-          lastSenderUid: currentUid 
+          lastWord: input, usedWords: arrayUnion(input), currentTurn: nextTurnUid, lastSenderUid: currentUid 
         });
-        
         shiritoriInput.value = ""; 
       } catch (error) { console.error(error); }
     });
 
+    // ─── 修正：審議ボタンで負けにならず、単語を無効化してやり直させる挙動 ───
     btnShingi.addEventListener("click", async () => {
       const roomRef = doc(db, "rooms", activeRoomId);
       try {
         const roomSnap = await getDoc(roomRef);
         const roomData = roomSnap.data();
+        
         const currentShingiCount = roomData.shingiCounts && roomData.shingiCounts[currentUid] ? roomData.shingiCounts[currentUid] : 0;
-        const mySnap = await getDoc(doc(db, "users", currentUid));
-        const myName = mySnap.exists() ? mySnap.data().username : "あなた";
-        const enemyUid = roomData.players.find(uid => uid !== currentUid);
+        const nextTurnUid = roomData.players.find(uid => uid !== currentUid); // 相手のUID
 
-        if (currentShingiCount >= 10) {
-          alert("ペナルティ負けになります！"); clearInterval(countdownInterval);
-          await updateDoc(roomRef, { status: "finished", winnerName: "対戦相手", winnerUid: enemyUid, finishReason: `上限を超えて審議を繰り返したため` });
-          return;
-        }
-        if (!confirm(`審議しますか？`)) return;
+        if (!confirm(`相手が出した単語「${roomData.lastWord}」を物言いにし、やり直しを求めますか？`)) return;
+
         clearInterval(countdownInterval);
         const updatedCounts = { ...roomData.shingiCounts, [currentUid]: currentShingiCount + 1 };
+
+        // 試合を終わらせず、ターンを相手（nextTurnUid）に戻し、単語を1つ前のもの（usedWordsの最後から2番目）に巻き戻す
+        const wordsList = roomData.usedWords || ["しりとり"];
+        // 今の不正単語を履歴から削除
+        if (wordsList.length > 1) {
+          wordsList.pop();
+        }
+        const rolledBackWord = wordsList[wordsList.length - 1] || "しりとり";
+
         await updateDoc(roomRef, {
-          shingiCounts: updatedCounts, status: "finished", winnerName: myName, winnerUid: currentUid, finishReason: `出された単語「${roomData.lastWord}」がリアル審議により無効となったため`
+          shingiCounts: updatedCounts,
+          currentTurn: nextTurnUid, // ターンを相手に差し戻す！
+          lastWord: rolledBackWord, // 単語を巻き戻す
+          usedWords: wordsList
         });
+
+        alert("審議が通り、相手にターンが差し戻されました！次の単語を待っています。");
       } catch (error) { console.error(error); }
     });
 
@@ -828,7 +853,6 @@
         const enemyUid = roomData.players.find(uid => uid !== currentUid);
         const enemySnap = await getDoc(doc(db, "users", enemyUid));
         const enemyName = enemySnap.exists() ? enemySnap.data().username : "対戦相手";
-
         await updateDoc(roomRef, { 
           status: "finished", winnerName: enemyName, winnerUid: enemyUid, finishReason: `対戦相手がゲームを途中でリタイア（降参）したため` 
         });
@@ -847,7 +871,6 @@
               const enemyUid = roomData.players.find(uid => uid !== currentUid);
               const enemySnap = await getDoc(doc(db, "users", enemyUid));
               const enemyName = enemySnap.exists() ? enemySnap.data().username : "対戦相手";
-
               await updateDoc(roomRef, {
                 status: "finished", winnerName: enemyName, winnerUid: enemyUid, finishReason: `対戦相手が試合の途中でメニューに戻り、切断したため`
               });
