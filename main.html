@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりポータル - ステータス選択版</title>
+  <title>しりとりポータル - フル機能完全修正版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -237,6 +237,8 @@
       <h2 id="room-title">部屋ID: ----</h2>
       <div id="game-status" style="font-weight: bold; color: #555;">相手の参加を待っています...</div>
       
+      <button id="btn-cancel-invite" class="hidden" style="background-color: #e0a800; color: white; margin-top: 10px; margin-bottom: 10px; font-size: 14px; padding: 8px;">🏳️ 招待を取り消す</button>
+
       <div id="shiritori-area" class="hidden">
         <div id="timer-box" class="timer-display">残り時間: 15秒</div>
         <div id="turn-indicator" class="turn-badge">読み込み中...</div>
@@ -265,7 +267,8 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    // 【修正箇所】インポートに orderBy を明示的に追加しReferenceErrorを解消
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDFeeG0cXom0TBmUngUDbBf_0CqKVRqKwg",
@@ -305,6 +308,7 @@
     const shingiCounter = document.getElementById("shingi-counter");
     const timerBox = document.getElementById("timer-box");
     const historyListContainer = document.getElementById("history-list-container");
+    const btnCancelInvite = document.getElementById("btn-cancel-invite");
 
     const inviteZone = document.getElementById("invite-notification-zone");
     const inviteMsgText = document.getElementById("invite-msg-text");
@@ -329,17 +333,10 @@
     let isFriendMatchMode = false;
     let currentRoomPlayers = [];
     let isHistorySaved = false;
+    let currentSentInviteId = null;   // 送信した招待ドキュメントIDキープ用
+    let currentSentInviteTargetUid = null; // 送信した相手のUIDキープ用
 
     const smallToLargeMap = { 'ゃ': 'や', 'ゅ': 'ゆ', 'ょ': 'よ', 'っ': 'つ' };
-
-    function generateRoomId() {
-      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-      let result = "";
-      for (let i = 0; i < 4; i++) { result += chars.charAt(Math.floor(Math.random() * chars.length)); }
-      return result;
-    }
-
-    function generateUserTag() { return Math.floor(1000 + Math.random() * 9000).toString(); }
 
     onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -378,7 +375,6 @@
           userData = freshSnap.data();
         }
 
-        // 保存されていた選択ステータスがあればプルダウンに復元
         if (userData.settingStatus) {
           selectMyStatus.value = userData.settingStatus;
         }
@@ -435,30 +431,23 @@
       }
     });
 
-    // ─── 修正：セレクトボックスの切り替えイベント ───
     selectMyStatus.addEventListener("change", async () => {
       const currentSelection = selectMyStatus.value;
       try {
         await updateDoc(doc(db, "users", currentUid), { settingStatus: currentSelection });
-        // 切り替えた瞬間にハートビートを即時再計算
         runHeartbeatTick(currentSelection);
       } catch (e) { console.error(e); }
     });
 
-    // ハートビート処理本体
     function runHeartbeatTick(statusType) {
       if (!currentUid) return;
-      
       if (statusType === "online") {
-        // 常にオンライン：未来の超巨大タイムスタンプを置いて強制固定
         const farFuture = new Date("2099-12-31").getTime();
         updateDoc(doc(db, "users", currentUid), { lastActive: new Date(farFuture) });
       } else if (statusType === "offline") {
-        // 常にオフライン：過去のタイムスタンプを置いて非表示化
         const farPast = new Date("2000-01-01").getTime();
         updateDoc(doc(db, "users", currentUid), { lastActive: new Date(farPast) });
       } else {
-        // 自動（通常）：現在の正規のサーバー時間を送信
         updateDoc(doc(db, "users", currentUid), { lastActive: serverTimestamp() });
       }
     }
@@ -466,7 +455,6 @@
     function startHeartbeat() {
       clearInterval(heartBeatInterval);
       runHeartbeatTick(selectMyStatus.value);
-      
       heartBeatInterval = setInterval(() => {
         runHeartbeatTick(selectMyStatus.value);
       }, 10000);
@@ -525,8 +513,10 @@
       } catch (e) { console.error(e); }
     }
 
+    // オートマッチング（インポート追加によりバグ完全修正）
     document.getElementById("btn-free").addEventListener("click", async () => {
       isFriendMatchMode = false;
+      btnCancelInvite.classList.add("hidden"); // オートマッチ時は取り消しボタン不要
       gameStatus.textContent = "対戦相手を探しています...";
       roomTitle.textContent = "自動マッチング中";
       showScreen("game");
@@ -605,7 +595,6 @@
             if (fData.lastActive) {
               const lastActiveTime = fData.lastActive.toDate().getTime();
               const nowTime = new Date().getTime();
-              // 30秒判定ルール（常にオンラインのプレイヤーは未来時間なので自動的にtrueを維持）
               if (nowTime - lastActiveTime < 30000 || lastActiveTime > nowTime) { isOnline = true; }
             }
             fData.calculatedOnline = isOnline;
@@ -651,63 +640,120 @@
       await setDoc(roomRef, {
         roomId: roomId, status: "waiting", players: [currentUid], createdAt: serverTimestamp(), lastWord: "しりとり", usedWords: ["しりとり"], currentTurn: currentUid, shingiCounts: { [currentUid]: 0 }
       });
-      const inviteRef = doc(collection(db, "users", targetUid, "invites"));
+
+      // 招待状ドキュメントを生成
+      const inviteId = "INV_" + generateRoomId();
+      const inviteRef = doc(db, "users", targetUid, "invites", inviteId);
       await setDoc(inviteRef, { roomId: roomId, hostName: myName, createdAt: new Date() });
+
+      // キャンセル用にIDと対象のUIDをキープ
+      currentSentInviteId = inviteId;
+      currentSentInviteTargetUid = targetUid;
+
       isFriendMatchMode = true; activeRoomId = roomId;
       roomTitle.textContent = "フレンドマッチ待機中";
       gameStatus.textContent = `${targetName} さんの参加を受け付け中...`;
+      
+      // 取り消しボタンを表示する
+      btnCancelInvite.classList.remove("hidden");
+
       showScreen("game"); watchRoom(roomId);
     }
+
+    // ─── 新設：招待を取り消すボタンを押したときの処理 ───
+    btnCancelInvite.addEventListener("click", async () => {
+      if (!confirm("対戦申し込みを取り消しますか？")) return;
+      
+      btnCancelInvite.classList.add("hidden");
+      clearInterval(countdownInterval);
+
+      try {
+        // 1. 相手のフォルダに投げ入れた招待状ドキュメントを削除（これで相手の画面の通知バーが消える）
+        if (currentSentInviteTargetUid && currentSentInviteId) {
+          const inviteRef = doc(db, "users", currentSentInviteTargetUid, "invites", currentSentInviteId);
+          await deleteDoc(inviteRef);
+        }
+
+        // 2. 作成していた待機部屋のステータスをfinished（CANCELED）にする
+        if (activeRoomId) {
+          const roomRef = doc(db, "rooms", activeRoomId);
+          await updateDoc(roomRef, {
+            status: "finished",
+            winnerName: "メニュー",
+            finishReason: "CANCELED" // 取り消しフラグ
+          });
+        }
+      } catch (e) { console.error("招待取り消しエラー:", e); }
+
+      currentSentInviteId = null;
+      currentSentInviteTargetUid = null;
+    });
 
     function setupInviteListener() {
       if (unsubscribeInvite) unsubscribeInvite();
       const invitesRef = collection(db, "users", currentUid, "invites");
+      
+      // 招待コレクション自体を監視
       unsubscribeInvite = onSnapshot(invitesRef, (snapshot) => {
+        // フォルダが完全に空になった＝誘った側がキャンセルした
+        if (snapshot.empty) {
+          inviteZone.classList.add("hidden");
+          incomingRoomId = null;
+          return;
+        }
+
         snapshot.docChanges().forEach(async (change) => {
           if (change.type === "added") {
             const inviteData = change.doc.data();
             incomingRoomId = inviteData.roomId.toUpperCase();
-            await deleteDoc(change.doc.ref);
+            
+            // 招待状IDをキープしておき、受ける/断るが押されたら消す
+            const currentInviteDocRef = change.doc.ref;
+
             const roomSnap = await getDoc(doc(db, "rooms", incomingRoomId));
             if (!roomSnap.exists()) return;
+
             inviteMsgText.textContent = `⚔️ ${inviteData.hostName} から対戦申し込みが届きました！`;
             btnDeclineInvite.setAttribute("data-room-id", incomingRoomId);
-            btnDeclineInvite.setAttribute("data-host-name", inviteData.hostName);
+            
+            // 受ける・断るボタンに、この招待ドキュメントを直接消去するイベントをバインド
+            btnAcceptInvite.onclick = async () => {
+              inviteZone.classList.add("hidden");
+              await deleteDoc(currentInviteDocRef); // ドキュメントを消す
+
+              const roomRef = doc(db, "rooms", incomingRoomId);
+              const freshSnap = await getDoc(roomRef);
+              if (!freshSnap.exists() || freshSnap.data().status === "finished") {
+                return alert("この招待は既に取り消されたか、解散されています。");
+              }
+
+              const rData = freshSnap.data();
+              const updatedShingiCounts = { ...rData.shingiCounts, [currentUid]: 0 };
+              await updateDoc(roomRef, { players: arrayUnion(currentUid), shingiCounts: updatedShingiCounts, status: "playing" });
+              isFriendMatchMode = true; activeRoomId = incomingRoomId;
+              roomTitle.textContent = "フレンドマッチ";
+              showScreen("game"); watchRoom(incomingRoomId);
+              incomingRoomId = null;
+            };
+
+            btnDeclineInvite.onclick = async () => {
+              inviteZone.classList.add("hidden");
+              await deleteDoc(currentInviteDocRef); // ドキュメントを消す
+
+              const roomRef = doc(db, "rooms", incomingRoomId);
+              if ((await getDoc(roomRef)).exists()) {
+                const mySnap = await getDoc(doc(db, "users", currentUid));
+                const myName = mySnap.exists() ? mySnap.data().username : "相手";
+                await updateDoc(roomRef, { status: "finished", winnerName: "メニュー", finishReason: `REFUSED:${myName}` });
+              }
+              incomingRoomId = null;
+            };
+
             inviteZone.classList.remove("hidden");
           }
         });
       });
     }
-
-    btnAcceptInvite.addEventListener("click", async () => {
-      if (!incomingRoomId) return;
-      inviteZone.classList.add("hidden");
-      const roomRef = doc(db, "rooms", incomingRoomId);
-      const roomSnap = await getDoc(roomRef);
-      if (!roomSnap.exists()) return alert("部屋が既に解散されています。");
-      const roomData = roomSnap.data();
-      const updatedShingiCounts = { ...roomData.shingiCounts, [currentUid]: 0 };
-      await updateDoc(roomRef, { players: arrayUnion(currentUid), shingiCounts: updatedShingiCounts, status: "playing" });
-      isFriendMatchMode = true; activeRoomId = incomingRoomId;
-      roomTitle.textContent = "フレンドマッチ";
-      showScreen("game"); watchRoom(incomingRoomId);
-      incomingRoomId = null;
-    });
-
-    btnDeclineInvite.addEventListener("click", async () => {
-      const targetRoomId = btnDeclineInvite.getAttribute("data-room-id");
-      inviteZone.classList.add("hidden");
-      if (targetRoomId) {
-        const roomRef = doc(db, "rooms", targetRoomId);
-        const roomSnap = await getDoc(roomRef);
-        if (roomSnap.exists()) {
-          const mySnap = await getDoc(doc(db, "users", currentUid));
-          const myName = mySnap.exists() ? mySnap.data().username : "相手";
-          await updateDoc(roomRef, { status: "finished", winnerName: "メニュー", finishReason: `REFUSED:${myName}` });
-        }
-      }
-      incomingRoomId = null;
-    });
 
     document.getElementById("btn-to-friend").addEventListener("click", () => showScreen("friend"));
     document.getElementById("btn-friend-back").addEventListener("click", () => showScreen("menu"));
@@ -715,6 +761,7 @@
     document.getElementById("btn-create-room").addEventListener("click", async () => {
       if (!currentUid) return alert("ログインしてください");
       isFriendMatchMode = false;
+      btnCancelInvite.classList.add("hidden");
       let roomId = generateUserTag();
       let roomRef = doc(db, "rooms", roomId);
       try {
@@ -730,6 +777,7 @@
     document.getElementById("btn-join-room").addEventListener("click", async () => {
       if (!currentUid) return alert("ログインしてください");
       isFriendMatchMode = false;
+      btnCancelInvite.classList.add("hidden");
       const targetRoomId = roomIdInput.value.trim().toUpperCase();
       if (!targetRoomId || targetRoomId.length !== 4) return alert("正しい4桁の部屋IDを入力してください");
       const roomRef = doc(db, "rooms", targetRoomId);
@@ -789,13 +837,20 @@
         if (data.players) currentRoomPlayers = data.players;
 
         if (data.status === "waiting") {
-          if (isFriendMatchMode) { roomTitle.textContent = "フレンドマッチ待機中"; } 
-          else if (roomId.startsWith("FREE_")) { roomTitle.textContent = "自動マッチング待機中"; gameStatus.textContent = "誰かが参加するのを待っています..."; }
+          if (isFriendMatchMode) { 
+            roomTitle.textContent = "フレンドマッチ待機中"; 
+          } 
+          else if (roomId.startsWith("FREE_")) { 
+            roomTitle.textContent = "自動マッチング待機中"; gameStatus.textContent = "誰かが参加するのを待っています..."; 
+          }
           else { roomTitle.textContent = `部屋ID: ${data.roomId}`; gameStatus.textContent = "相手の参加を待っています..."; }
           shiritoriArea.classList.add("hidden");
           clearInterval(countdownInterval);
         } 
         else if (data.status === "playing") {
+          // 試合が始まったら取り消しボタンを非表示にする
+          btnCancelInvite.classList.add("hidden");
+
           gameStatus.textContent = "試合中！";
           if (isFriendMatchMode) { roomTitle.textContent = "フレンドマッチ"; } 
           else if (roomId.startsWith("FREE_")) { roomTitle.textContent = "フリー自動対戦"; }
@@ -819,8 +874,12 @@
         else if (data.status === "finished") {
           clearInterval(countdownInterval);
           if (unsubscribeRoom) unsubscribeRoom();
+          btnCancelInvite.classList.add("hidden");
 
-          if (data.finishReason && data.finishReason.startsWith("REFUSED:")) {
+          // ─── 修正：取り消し、または辞退された時の分岐 ───
+          if (data.finishReason === "CANCELED") {
+            alert("対戦申し込みを取り消しました。");
+          } else if (data.finishReason && data.finishReason.startsWith("REFUSED:")) {
             alert(`対戦申し込みを辞退されました。`);
           } else {
             alert(`ゲーム終了！ 勝者: ${data.winnerName} 👑\n理由: ${data.finishReason}`);
@@ -835,6 +894,8 @@
               }
             }
           }
+          currentSentInviteId = null;
+          currentSentInviteTargetUid = null;
           showScreen("menu");
         }
       });
@@ -860,9 +921,7 @@
         if (lastChar === "ー" && lastWord.length > 1) lastChar = lastWord.slice(-2, -1);
         
         let requiredStartChar = lastChar;
-        if (smallToLargeMap[lastChar]) {
-          requiredStartChar = smallToLargeMap[lastChar];
-        }
+        if (smallToLargeMap[lastChar]) { requiredStartChar = smallToLargeMap[lastChar]; }
 
         if (lastWord && requiredStartChar !== input.charAt(0)) {
           return alert(`「${requiredStartChar}」から始まる単語を入力してください！`);
@@ -893,7 +952,6 @@
       try {
         const roomSnap = await getDoc(roomRef);
         const roomData = roomSnap.data();
-        
         const currentShingiCount = roomData.shingiCounts && roomData.shingiCounts[currentUid] ? roomData.shingiCounts[currentUid] : 0;
         const nextTurnUid = roomData.players.find(uid => uid !== currentUid);
 
@@ -903,16 +961,11 @@
         const updatedCounts = { ...roomData.shingiCounts, [currentUid]: currentShingiCount + 1 };
 
         const wordsList = roomData.usedWords || ["しりとり"];
-        if (wordsList.length > 1) {
-          wordsList.pop();
-        }
+        if (wordsList.length > 1) { wordsList.pop(); }
         const rolledBackWord = wordsList[wordsList.length - 1] || "しりとり";
 
         await updateDoc(roomRef, {
-          shingiCounts: updatedCounts,
-          currentTurn: nextTurnUid,
-          lastWord: rolledBackWord,
-          usedWords: wordsList
+          shingiCounts: updatedCounts, currentTurn: nextTurnUid, lastWord: rolledBackWord, usedWords: wordsList
         });
 
         alert("審議が通り、相手にターンが差し戻されました！次の単語を待っています。");
