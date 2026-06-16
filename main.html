@@ -285,7 +285,6 @@
     const shingiCounter = document.getElementById("shingi-counter");
     const timerBox = document.getElementById("timer-box");
 
-    // 招待通知用UI
     const inviteZone = document.getElementById("invite-notification-zone");
     const inviteMsgText = document.getElementById("invite-msg-text");
     const btnAcceptInvite = document.getElementById("btn-accept-invite");
@@ -304,7 +303,7 @@
     let countdownInterval = null;
     let heartBeatInterval = null;
     let remainingTime = 15;
-    let incomingRoomId = null; // 届いた招待の部屋IDを一時キープ
+    let incomingRoomId = null;
 
     document.getElementById("btn-login").addEventListener("click", async () => {
       try {
@@ -461,17 +460,26 @@
       });
     }
 
+    function generateRoomId() {
+      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+      let result = "";
+      for (let i = 0; i < 4; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return result;
+    }
+
     async function sendMatchInvite(targetUid, targetName) {
       const mySnap = await getDoc(doc(db, "users", currentUid));
       const myName = mySnap.exists() ? mySnap.data().username : "フレンド";
 
       if (!confirm(`${targetName} さんに対戦を申し込みますか？`)) return;
       
-      let roomId = Math.floor(1000 + Math.random() * 9000).toString();
+      let roomId = generateRoomId();
       let roomRef = doc(db, "rooms", roomId);
       let roomSnap = await getDoc(roomRef);
       while (roomSnap.exists()) {
-        roomId = Math.floor(1000 + Math.random() * 9000).toString();
+        roomId = generateRoomId();
         roomRef = doc(db, "rooms", roomId);
         roomSnap = await getDoc(roomRef);
       }
@@ -499,7 +507,6 @@
       watchRoom(roomId);
     }
 
-    // ─── 招待の受け取りを画面上のUI通知として表示 ───
     function setupInviteListener() {
       if (unsubscribeInvite) unsubscribeInvite();
       
@@ -508,16 +515,14 @@
         snapshot.docChanges().forEach(async (change) => {
           if (change.type === "added") {
             const inviteData = change.doc.data();
-            incomingRoomId = inviteData.roomId;
+            // 大文字に統一して保管
+            incomingRoomId = inviteData.roomId.toUpperCase();
 
-            // 招待ドキュメントは即座に削除（重複防止）
             await deleteDoc(change.doc.ref);
 
-            // 部屋が生きているか確認
             const roomSnap = await getDoc(doc(db, "rooms", incomingRoomId));
             if (!roomSnap.exists()) return;
 
-            // 確認ダイアログの代わりに、画面上に目立つ通知バーを表示する
             inviteMsgText.textContent = `⚔️ ${inviteData.hostName} から対戦申し込みが届きました！`;
             inviteZone.classList.remove("hidden");
           }
@@ -525,7 +530,7 @@
       });
     }
 
-    // 招待を「受ける」を押したとき
+    // ─── 修正：4桁入力を完全にスルーして直接部屋に入る処理 ───
     btnAcceptInvite.addEventListener("click", async () => {
       if (!incomingRoomId) return;
       inviteZone.classList.add("hidden");
@@ -537,20 +542,23 @@
       const roomData = roomSnap.data();
       const updatedShingiCounts = { ...roomData.shingiCounts, [currentUid]: 0 };
       
+      // 相手の部屋データを更新（自分をプレイヤー[1]に加える ＆ 試合開始）
       await updateDoc(roomRef, {
         players: arrayUnion(currentUid),
         shingiCounts: updatedShingiCounts,
         status: "playing"
       });
       
+      // コピー元の一時変数をアクティブ部屋IDへ
       activeRoomId = incomingRoomId;
       roomTitle.textContent = `部屋ID: ${incomingRoomId}`;
+      
+      // 4桁入力をスキップし、直接ゲーム画面に切り替えてリアルタイム同期を開始！
       showScreen("game");
       watchRoom(incomingRoomId);
       incomingRoomId = null;
     });
 
-    // 招待を「断る」を押したとき
     btnDeclineInvite.addEventListener("click", () => {
       inviteZone.classList.add("hidden");
       incomingRoomId = null;
@@ -558,6 +566,58 @@
 
     document.getElementById("btn-to-friend").addEventListener("click", () => showScreen("friend"));
     document.getElementById("btn-friend-back").addEventListener("click", () => showScreen("menu"));
+
+    document.getElementById("btn-create-room").addEventListener("click", async () => {
+      if (!currentUid) return alert("ログインしてください");
+      let roomId = generateRoomId();
+      let roomRef = doc(db, "rooms", roomId);
+      try {
+        let roomSnap = await getDoc(roomRef);
+        while (roomSnap.exists()) {
+          roomId = generateRoomId();
+          roomRef = doc(db, "rooms", roomId);
+          roomSnap = await getDoc(roomRef);
+        }
+        await setDoc(roomRef, {
+          roomId: roomId,
+          status: "waiting",
+          players: [currentUid],
+          createdAt: new Date(),
+          lastWord: "しりとり",
+          currentTurn: currentUid,
+          shingiCounts: { [currentUid]: 0 }
+        });
+        activeRoomId = roomId;
+        roomTitle.textContent = `部屋ID: ${roomId}`;
+        showScreen("game");
+        watchRoom(roomId);
+      } catch (error) { console.error(error); }
+    });
+
+    document.getElementById("btn-join-room").addEventListener("click", async () => {
+      if (!currentUid) return alert("ログインしてください");
+      const targetRoomId = roomIdInput.value.trim().toUpperCase(); // 大文字統一
+      if (!targetRoomId || targetRoomId.length !== 4) return alert("正しい4桁の部屋IDを入力してください");
+      const roomRef = doc(db, "rooms", targetRoomId);
+      try {
+        const roomSnap = await getDoc(roomRef);
+        if (!roomSnap.exists()) return alert("指定された部屋が見つかりません。");
+        const roomData = roomSnap.data();
+        if (roomData.status !== "waiting" || roomData.players.length >= 2) return alert("入れません。");
+        if (roomData.players.includes(currentUid)) return alert("すでに入室しています。");
+
+        const updatedShingiCounts = { ...roomData.shingiCounts, [currentUid]: 0 };
+        await updateDoc(roomRef, {
+          players: arrayUnion(currentUid),
+          shingiCounts: updatedShingiCounts,
+          status: "playing"
+        });
+        activeRoomId = targetRoomId;
+        roomTitle.textContent = `部屋ID: ${targetRoomId}`;
+        showScreen("game");
+        watchRoom(targetRoomId);
+      } catch (error) { console.error(error); }
+    });
 
     function startLocalTimer(roomData) {
       clearInterval(countdownInterval);
@@ -727,7 +787,6 @@
       showScreen("menu");
     });
 
-    // ─── 【重要】タイポを完全に修正した画面切り替え関数 ───
     function showScreen(screenType) {
       loginScreen.classList.add("hidden");
       registerScreen.classList.add("hidden");
@@ -738,7 +797,7 @@
       if (screenType === "login") loginScreen.classList.remove("hidden");
       if (screenType === "register") registerScreen.classList.remove("hidden");
       if (screenType === "menu") menuScreen.classList.remove("hidden");
-      if (screenType === "game") gameScreen.classList.remove("hidden"); // バグ修正箇所
+      if (screenType === "game") gameScreen.classList.remove("hidden"); 
       if (screenType === "friend") friendScreen.classList.remove("hidden");
     }
   </script>
