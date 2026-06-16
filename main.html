@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりポータル - 審議ルール完全修正版</title>
+  <title>しりとりポータル</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -133,7 +133,7 @@
 
     <!-- 招待通知エリア -->
     <div id="invite-notification-zone" class="invite-alert-box hidden">
-      <span id="invite-msg-text">〇〇から対戦申し込み！</span>
+      <span id="invite-msg-text">〇〇から対戦申し込みが来ました！</span>
       <div class="action-group" style="margin-top: 10px;">
         <button id="btn-accept-invite" style="background-color: #28a745; padding: 6px;">受ける</button>
         <button id="btn-decline-invite" style="background-color: #dc3545; padding: 6px;">断る</button>
@@ -151,7 +151,7 @@
     <div id="register-screen" class="game-card hidden" style="text-align: center;">
       <h1>プロフィール登録</h1>
       <p>ユーザーネームを決めてください</p>
-      <input type="text" id="username-input" placeholder="例: どーらい">
+      <input type="text" id="username-input" placeholder="ここに名前を入力">
       <button id="btn-register">登録して次へ</button>
     </div>
 
@@ -163,26 +163,26 @@
         <div class="pc-left-col">
           <!-- プレイヤー情報 -->
           <div class="game-card">
-            <h3>👤 プレイヤー情報</h3>
+            <h3>プレイヤー情報</h3>
             <div class="user-info">
-              <span id="user-display">プレイヤー: ----</span>
-              <button id="btn-edit-name" class="btn-small-edit">✏️ 名前変更</button>
+              <span id="user-display">プレイヤーの名前: ----</span>
+              <button id="btn-edit-name" class="btn-small-edit">変更</button>
             </div>
             <div class="status-select-zone">
               <span>自分の状態:</span>
               <select id="select-my-status">
-                <option value="auto">自動 (開いている時のみON)</option>
-                <option value="online">常にオンライン固定</option>
-                <option value="offline">オフライン (隠れる)</option>
+                <option value="auto">自動</option>
+                <option value="online">オンライン</option>
+                <option value="offline">オフライン</option>
               </select>
             </div>
-            <button id="btn-to-friend" style="background-color: #9c27b0; padding: 12px;">👥 フレンド・オンラインリスト</button>
+            <button id="btn-to-friend" style="background-color: #9c27b0; padding: 12px;">フレンド・オンラインリスト</button>
           </div>
 
           <!-- 対人モード -->
           <div class="game-card">
             <h3>⚔️ 対人モード</h3>
-            <button id="btn-create-room" style="background-color: #f4b400; margin-bottom: 16px;">新しく部屋を作る（4桁ID発行）</button>
+            <button id="btn-create-room" style="background-color: #f4b400; margin-bottom: 16px;">新しく部屋を作る</button>
             <div class="flex-group">
               <input type="text" id="room-id-input" placeholder="4桁の部屋IDを入力">
               <button id="btn-join-room" style="background-color: #4285f4;">部屋に入る</button>
@@ -217,8 +217,8 @@
     <!-- 5. フレンド管理画面 -->
     <div id="friend-screen" class="hidden">
       <div class="game-card" style="margin-bottom: 20px; text-align: center;">
-        <h2>フレンド・オンライン</h2>
-        <div id="friend-my-tag" style="color: #9c27b0; font-weight: bold; font-size: 16px; margin-top: 10px;">あなたのタグ: ----</div>
+        <h2>フレンド</h2>
+        <div id="friend-my-tag" style="color: #9c27b0; font-weight: bold; font-size: 16px; margin-top: 10px;">あなたの名前: ----</div>
       </div>
       
       <div class="pc-layout-grid">
@@ -230,7 +230,7 @@
         <div class="game-card">
           <h3>➕ フレンド追加</h3>
           <div class="flex-group" style="margin-bottom: 20px;">
-            <input type="text" id="friend-search-input" placeholder="例: どーらい#1234">
+            <input type="text" id="friend-search-input" placeholder="例: XXXXX#1234">
             <button id="btn-add-friend" style="background-color: #9c27b0;">追加</button>
           </div>
           <button id="btn-friend-back" style="background-color: #888;">メニューに戻る</button>
@@ -243,7 +243,7 @@
       <h2 id="room-title">部屋ID: ----</h2>
       <div id="game-status" style="font-weight: bold; color: #555; text-align: center; margin-bottom: 20px;">相手の参加を待っています...</div>
       
-      <button id="btn-cancel-invite" class="hidden" style="background-color: #e0a800; color: white; margin-bottom: 20px; font-size: 16px; padding: 12px;">🏳️ 招待を取り消す</button>
+      <button id="btn-cancel-invite" class="hidden" style="background-color: #e0a800; color: white; margin-bottom: 20px; font-size: 16px; padding: 12px;">招待を取り消す</button>
 
       <div id="shiritori-area" class="hidden">
         <div id="timer-box" class="timer-display">残り時間: 15秒</div>
@@ -257,11 +257,11 @@
 
         <div class="action-group">
           <div style="flex: 1;">
-            <button id="btn-shingi" class="btn-action" style="background-color: #ff9800;">🤔 審議 (ダウト)</button>
+            <button id="btn-shingi" class="btn-action" style="background-color: #ff9800;">審議</button>
             <div id="shingi-counter" class="shingi-count-text">審議残り: 10回</div>
           </div>
           <div style="flex: 1;">
-            <button id="btn-retire" class="btn-action" style="background-color: #ea4335;">🏳️ リタイア</button>
+            <button id="btn-retire" class="btn-action" style="background-color: #ea4335;">リタイア</button>
           </div>
         </div>
       </div>
