@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりアプリ - 完全対戦版</title>
+  <title>しりとりアプリ - 完全対戦・フレンド機能版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -11,8 +11,10 @@
       display: flex;
       justify-content: center;
       align-items: center;
-      height: 100vh;
+      min-height: 100vh;
       margin: 0;
+      padding: 20px 0;
+      box-sizing: border-box;
     }
     .container {
       background: white;
@@ -79,7 +81,6 @@
     .my-turn { background-color: #e6f4ea; color: #137333; }
     .enemy-turn { background-color: #fce8e6; color: #c5221f; }
     
-    /* 特殊アクションボタン用スタイル */
     .action-group {
       display: flex;
       gap: 10px;
@@ -94,6 +95,25 @@
       color: #666;
       margin-top: 4px;
     }
+
+    /* フレンド機能用のスタイル */
+    .friend-list {
+      text-align: left;
+      background: #f9f9f9;
+      padding: 10px;
+      border-radius: 6px;
+      max-height: 150px;
+      overflow-y: auto;
+      margin-bottom: 15px;
+      border: 1px solid #eee;
+    }
+    .friend-item {
+      padding: 6px 0;
+      border-bottom: 1px solid #eee;
+      color: #444;
+      font-size: 14px;
+    }
+    .friend-item:last-child { border-bottom: none; }
   </style>
 </head>
 <body>
@@ -101,22 +121,20 @@
   <div class="container">
     <h1>しりとりポータル</h1>
 
-    <!-- 1. 初期ログイン画面 -->
     <div id="login-screen">
       <p>ゲームを始めるにはGoogleアカウントでログインしてください。</p>
       <button id="btn-login">Googleでログイン</button>
     </div>
 
-    <!-- 2. 初回のみ表示されるユーザーネーム登録画面 -->
     <div id="register-screen" class="hidden">
       <p>ユーザーネームを決めてください</p>
       <input type="text" id="username-input" placeholder="例: どーらい">
       <button id="btn-register">登録して次へ</button>
     </div>
 
-    <!-- 3. ログイン完了後のメインメニュー画面 -->
     <div id="menu-screen" class="hidden">
       <div class="user-info" id="user-display"></div>
+      <button id="btn-to-friend" style="background-color: #9c27b0; margin-bottom: 15px; padding: 8px;">👥 フレンド画面を開く</button>
       <hr>
       
       <h3>【対人モード】</h3>
@@ -132,7 +150,23 @@
       <button id="btn-free" style="background-color: #34a853;">フリーモード（全世界共通）</button>
     </div>
 
-    <!-- 4. 对戦メイン画面 -->
+    <div id="friend-screen" class="hidden">
+      <h2>フレンド管理</h2>
+      <div class="user-info" id="friend-my-tag" style="color: #9c27b0;">あなたのタグ: ----</div>
+      
+      <h3>フレンド一覧</h3>
+      <div id="friend-list-container" class="friend-list">フレンドはいません</div>
+
+      <h3>フレンド追加</h3>
+      <p style="font-size: 12px; color: #666; text-align: left; margin-bottom: 5px;">相手の「名前#4桁数字」を入力してください</p>
+      <div class="flex-group">
+        <input type="text" id="friend-search-input" placeholder="例: どーらい#1234">
+        <button id="btn-add-friend" style="background-color: #9c27b0;">追加</button>
+      </div>
+      
+      <button id="btn-friend-back" style="background-color: #888; margin-top: 10px;">メニューに戻る</button>
+    </div>
+
     <div id="game-screen" class="hidden">
       <h2 id="room-title">部屋ID: ----</h2>
       <div id="game-status" style="font-weight: bold; color: #555;">相手の参加を待っています...</div>
@@ -146,7 +180,6 @@
           <button id="btn-send-word" style="background-color: #34a853;">送信</button>
         </div>
 
-        <!-- 審議とリタイアボタン -->
         <div class="action-group">
           <div style="flex: 1;">
             <button id="btn-shingi" class="btn-action" style="background-color: #ff9800;">🤔 審議 (ダウト)</button>
@@ -165,7 +198,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDFeeG0cXom0TBmUngUDbBf_0CqKVRqKwg",
@@ -186,6 +219,7 @@
     const registerScreen = document.getElementById("register-screen");
     const menuScreen = document.getElementById("menu-screen");
     const gameScreen = document.getElementById("game-screen");
+    const friendScreen = document.getElementById("friend-screen");
     
     const usernameInput = document.getElementById("username-input");
     const userDisplay = document.getElementById("user-display");
@@ -202,9 +236,15 @@
     const btnRetire = document.getElementById("btn-retire");
     const shingiCounter = document.getElementById("shingi-counter");
 
+    // フレンド要素
+    const friendMyTag = document.getElementById("friend-my-tag");
+    const friendListContainer = document.getElementById("friend-list-container");
+    const friendSearchInput = document.getElementById("friend-search-input");
+
     let currentUid = null;
     let activeRoomId = null;
     let unsubscribeRoom = null;
+    let unsubscribeFriends = null;
 
     document.getElementById("btn-login").addEventListener("click", async () => {
       try {
@@ -224,30 +264,118 @@
       if (userSnap.exists()) {
         const userData = userSnap.data();
         showScreen("menu");
-        userDisplay.textContent = `プレイヤー: ${userData.username}`;
+        userDisplay.textContent = `プレイヤー: ${userData.username}#${userData.userTag}`;
+        friendMyTag.textContent = `あなたのタグ: ${userData.username}#${userData.userTag}`;
+        setupFriendsListener(); // フレンド監視開始
       } else {
         showScreen("register");
       }
     }
 
+    // フレンド用：4桁の数字文字列を作るヘルパー
+    function generateUserTag() {
+      return Math.floor(1000 + Math.random() * 9000).toString(); // 1000〜9999
+    }
+
     document.getElementById("btn-register").addEventListener("click", async () => {
       const name = usernameInput.value.trim();
       if (!name) return alert("名前を入力してください。");
+      if (name.includes("#")) return alert("名前に'#'は使用できません。");
 
       try {
+        const tag = generateUserTag();
         await setDoc(doc(db, "users", currentUid), {
           uid: currentUid,
           username: name,
+          userTag: tag, // 4桁の識別用タグ
+          friends: [],   // フレンドのUIDリストを格納する空配列
           createdAt: new Date()
         });
         showScreen("menu");
-        userDisplay.textContent = `プレイヤー: ${name}`;
+        userDisplay.textContent = `プレイヤー: ${name}#${tag}`;
+        friendMyTag.textContent = `あなたのタグ: ${name}#${tag}`;
+        setupFriendsListener();
       } catch (error) {
         console.error("登録に失敗しました:", error);
         alert("ユーザー登録に失敗しました。");
       }
     });
 
+    // ─── 【新設】フレンド追加（名前#4桁検索） ───
+    document.getElementById("btn-add-friend").addEventListener("click", async () => {
+      const searchText = friendSearchInput.value.trim();
+      if (!searchText.includes("#")) return alert("「名前#4桁数字」の形式で入力してください。");
+
+      const [searchName, searchTag] = searchText.split("#");
+      
+      try {
+        // Firestoreから「username」と「userTag」が両方一致するユーザーをクエリで検索
+        const usersRef = collection(db, "users");
+        const q = query(usersRef, where("username", "==", searchName), where("userTag", "==", searchTag));
+        const querySnapshot = await getDocs(q);
+
+        if (querySnapshot.empty) {
+          return alert("指定されたユーザーが見つかりません。");
+        }
+
+        let targetUid = null;
+        querySnapshot.forEach((doc) => {
+          targetUid = doc.id;
+        });
+
+        if (targetUid === currentUid) {
+          return alert("自分自身をフレンドに追加することはできません。");
+        }
+
+        // 自分のフレンドリストに相手のUIDを追加
+        const myRef = doc(db, "users", currentUid);
+        await updateDoc(myRef, {
+          friends: arrayUnion(targetUid)
+        });
+
+        alert(`フレンドを追加しました！`);
+        friendSearchInput.value = "";
+
+      } catch (error) {
+        console.error("フレンド追加エラー:", error);
+        alert("フレンド追加に失敗しました。");
+      }
+    });
+
+    // ─── 【新設】フレンド一覧をリアルタイム同期表示 ───
+    function setupFriendsListener() {
+      if (unsubscribeFriends) unsubscribeFriends();
+
+      unsubscribeFriends = onSnapshot(doc(db, "users", currentUid), async (snapshot) => {
+        if (!snapshot.exists()) return;
+        const myData = snapshot.data();
+        const friendUids = myData.friends || [];
+
+        if (friendUids.length === 0) {
+          friendListContainer.innerHTML = "<div class='friend-item'>フレンドはいません</div>";
+          return;
+        }
+
+        friendListContainer.innerHTML = "読み込み中...";
+        let htmlBuffer = "";
+
+        // 各フレンドの最新情報（名前とタグ）を非同期で取得
+        for (const fUid of friendUids) {
+          const fSnap = await getDoc(doc(db, "users", fUid));
+          if (fSnap.exists()) {
+            const fData = fSnap.data();
+            htmlBuffer += `<div class="friend-item">👤 ${fData.username}#${fData.userTag}</div>`;
+          }
+        }
+        friendListContainer.innerHTML = htmlBuffer;
+      });
+    }
+
+    // 画面遷移ボタン群
+    document.getElementById("btn-to-friend").addEventListener("click", () => showScreen("friend"));
+    document.getElementById("btn-friend-back").addEventListener("click", () => showScreen("menu"));
+
+    // ─── 既存のしりとりコアロジック（4桁部屋ID） ───
     function generateRoomId() {
       const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
       let result = "";
@@ -259,10 +387,8 @@
 
     document.getElementById("btn-create-room").addEventListener("click", async () => {
       if (!currentUid) return alert("ログインしてください");
-
       let roomId = generateRoomId();
       let roomRef = doc(db, "rooms", roomId);
-      
       try {
         let roomSnap = await getDoc(roomRef);
         while (roomSnap.exists()) {
@@ -270,8 +396,6 @@
           roomRef = doc(db, "rooms", roomId);
           roomSnap = await getDoc(roomRef);
         }
-
-        // 変更：初期データに各プレイヤーの審議回数（初期値0）を持たせる
         await setDoc(roomRef, {
           roomId: roomId,
           status: "waiting",
@@ -279,80 +403,56 @@
           createdAt: new Date(),
           lastWord: "しりとり",
           currentTurn: currentUid,
-          shingiCounts: {
-            [currentUid]: 0
-          }
+          shingiCounts: { [currentUid]: 0 }
         });
-
         activeRoomId = roomId;
         roomTitle.textContent = `部屋ID: ${roomId}`;
         showScreen("game");
         watchRoom(roomId);
-
       } catch (error) {
-        console.error("部屋の作成に失敗:", error);
-        alert("部屋の作成に失敗しました。");
+        console.error(error);
       }
     });
 
     document.getElementById("btn-join-room").addEventListener("click", async () => {
       if (!currentUid) return alert("ログインしてください");
-      
       const targetRoomId = roomIdInput.value.trim().toUpperCase();
       if (!targetRoomId || targetRoomId.length !== 4) return alert("正しい4桁の部屋IDを入力してください");
-
       const roomRef = doc(db, "rooms", targetRoomId);
-      
       try {
         const roomSnap = await getDoc(roomRef);
         if (!roomSnap.exists()) return alert("指定された部屋が見つかりません。");
-
         const roomData = roomSnap.data();
-        if (roomData.status !== "waiting" || roomData.players.length >= 2) {
-          return alert("この部屋はすでに満員か、試合が始まっています。");
-        }
+        if (roomData.status !== "waiting" || roomData.players.length >= 2) return alert("入れません。");
         if (roomData.players.includes(currentUid)) return alert("すでに入室しています。");
 
-        // 変更：入室時に自分の審議カウント（0）をマップに追加
         const updatedShingiCounts = { ...roomData.shingiCounts, [currentUid]: 0 };
-
         await updateDoc(roomRef, {
           players: arrayUnion(currentUid),
           shingiCounts: updatedShingiCounts,
           status: "playing"
         });
-
         activeRoomId = targetRoomId;
         roomTitle.textContent = `部屋ID: ${targetRoomId}`;
         showScreen("game");
         watchRoom(targetRoomId);
-
       } catch (error) {
-        console.error("部屋への参加に失敗:", error);
-        alert("部屋への参加に失敗しました。");
+        console.error(error);
       }
     });
 
     function watchRoom(roomId) {
       if (unsubscribeRoom) unsubscribeRoom();
-
       unsubscribeRoom = onSnapshot(doc(db, "rooms", roomId), (snapshot) => {
         if (!snapshot.exists()) return;
-        
         const data = snapshot.data();
-        
         if (data.status === "waiting") {
           gameStatus.textContent = "相手の参加を待っています...（このIDを友達に伝えてね）";
           shiritoriArea.classList.add("hidden");
-        } 
-        
-        else if (data.status === "playing") {
+        } else if (data.status === "playing") {
           gameStatus.textContent = "試合中！";
           shiritoriArea.classList.remove("hidden");
-          
           currentWord.textContent = data.lastWord || "しりとり";
-          
-          // 追加：現在の自分の審議残り回数を計算して表示
           const myUsedShingi = data.shingiCounts && data.shingiCounts[currentUid] ? data.shingiCounts[currentUid] : 0;
           const shingiRemaining = 10 - myUsedShingi;
           shingiCounter.textContent = `審議残り: ${shingiRemaining >= 0 ? shingiRemaining : 0}回`;
@@ -362,17 +462,15 @@
             turnIndicator.className = "turn-badge my-turn";
             shiritoriInput.disabled = false;
             btnSendWord.disabled = false;
-            btnShingi.disabled = true; // 自分の番は審議できない
+            btnShingi.disabled = true;
           } else {
             turnIndicator.textContent = "相手の番です...";
             turnIndicator.className = "turn-badge enemy-turn";
             shiritoriInput.disabled = true;
             btnSendWord.disabled = true;
-            btnShingi.disabled = false; // 相手の番（相手が打った直後）に審議できる
+            btnShingi.disabled = false;
           }
-        }
-        
-        else if (data.status === "finished") {
+        } else if (data.status === "finished") {
           alert(`ゲーム終了！ 勝者: ${data.winnerName} 👑\n理由: ${data.finishReason}`);
           if (unsubscribeRoom) unsubscribeRoom();
           showScreen("menu");
@@ -383,36 +481,21 @@
     btnSendWord.addEventListener("click", async () => {
       let input = shiritoriInput.value.trim();
       if (!input) return;
-
-      if (!/^[ぁ-んー]+$/.test(input)) {
-        return alert("ひらがなだけで入力してください！");
-      }
-      if (input.length < 2) {
-        return alert("2文字以上で入力してください！");
-      }
+      if (!/^[ぁ-んー]+$/.test(input)) return alert("ひらがなだけで入力してください！");
+      if (input.length < 2) return alert("2文字以上で入力してください！");
 
       const roomRef = doc(db, "rooms", activeRoomId);
-      
       try {
         const roomSnap = await getDoc(roomRef);
         const roomData = roomSnap.data();
         const lastWord = roomData.lastWord; 
-        
         let lastChar = lastWord.slice(-1);
-        if (lastChar === "ー" && lastWord.length > 1) {
-          lastChar = lastWord.slice(-2, -1);
-        }
-        
-        const firstChar = input.charAt(0);
-
-        if (lastWord && lastChar !== firstChar) {
-          return alert(`前の単語の末尾は「${lastChar}」です。「${lastChar}」から始まる単語を入力してください！`);
-        }
+        if (lastChar === "ー" && lastWord.length > 1) lastChar = lastWord.slice(-2, -1);
+        if (lastWord && lastChar !== input.charAt(0)) return alert(`「${lastChar}」から始まる単語を入力してください！`);
 
         if (input.slice(-1) === "ん") {
           const mySnap = await getDoc(doc(db, "users", currentUid));
           const myName = mySnap.exists() ? mySnap.data().username : "相手";
-          
           const enemyUid = roomData.players.find(uid => uid !== currentUid);
           const enemySnap = await getDoc(doc(db, "users", enemyUid));
           const enemyName = enemySnap.exists() ? enemySnap.data().username : "対戦相手";
@@ -425,56 +508,37 @@
           shiritoriInput.value = "";
           return;
         }
-
         const nextTurnUid = roomData.players.find(uid => uid !== currentUid);
-
-        await updateDoc(roomRef, {
-          lastWord: input,
-          currentTurn: nextTurnUid,
-          lastSenderUid: currentUid
-        });
-
+        await updateDoc(roomRef, { lastWord: input, currentTurn: nextTurnUid, lastSenderUid: currentUid });
         shiritoriInput.value = ""; 
       } catch (error) {
-        console.error("ワード送信エラー:", error);
+        console.error(error);
       }
     });
 
-    // ─── 変更：審議（ダウト）ボタンの処理 ───
     btnShingi.addEventListener("click", async () => {
       const roomRef = doc(db, "rooms", activeRoomId);
       try {
         const roomSnap = await getDoc(roomRef);
         const roomData = roomSnap.data();
-        
-        // 現在の自分の審議回数を取得
         const currentShingiCount = roomData.shingiCounts && roomData.shingiCounts[currentUid] ? roomData.shingiCounts[currentUid] : 0;
-        
         const mySnap = await getDoc(doc(db, "users", currentUid));
         const myName = mySnap.exists() ? mySnap.data().username : "あなた";
-
         const enemyUid = roomData.players.find(uid => uid !== currentUid);
         const enemySnap = await getDoc(doc(db, "users", enemyUid));
         const enemyName = enemySnap.exists() ? enemySnap.data().username : "対戦相手";
 
-        // 【最重要】すでに10回審議を行っている状態で、さらに押した場合（11回目）
         if (currentShingiCount >= 10) {
-          alert("審議可能回数（10回）を超えて審議を繰り返したため、ペナルティであなたの負けになります！");
+          alert("ペナルティ負けになります！");
           await updateDoc(roomRef, {
             status: "finished",
             winnerName: enemyName,
-            finishReason: `${myName} さんが上限を超えて審議（乱発）を繰り返したため`
+            finishReason: `${myName} さんが上限を超えて審議を繰り返したため`
           });
           return;
         }
-
-        // 通常の審議確認（1〜10回目）
-        if (!confirm(`相手の単語を『存在しない単語』として審議しますか？\n（残り審議回数: ${10 - currentShingiCount}回）`)) return;
-
-        // 審議回数を1プラスする
+        if (!confirm(`審議しますか？`)) return;
         const updatedCounts = { ...roomData.shingiCounts, [currentUid]: currentShingiCount + 1 };
-
-        // 審議判定：直前に送信した相手を負けにし、ゲーム終了
         await updateDoc(roomRef, {
           shingiCounts: updatedCounts,
           status: "finished",
@@ -482,37 +546,31 @@
           finishReason: `出された単語「${roomData.lastWord}」がリアル審議により無効となったため`
         });
       } catch (error) {
-        console.error("審議エラー:", error);
+        console.error(error);
       }
     });
 
     btnRetire.addEventListener("click", async () => {
-      if (!confirm("本当にリタイア（降参）しますか？")) return;
-
+      if (!confirm("リタイアしますか？")) return;
       const roomRef = doc(db, "rooms", activeRoomId);
       try {
         const roomSnap = await getDoc(roomRef);
         const roomData = roomSnap.data();
-        
         const enemyUid = roomData.players.find(uid => uid !== currentUid);
         const enemySnap = await getDoc(doc(db, "users", enemyUid));
         const enemyName = enemySnap.exists() ? enemySnap.data().username : "対戦相手";
-
         await updateDoc(roomRef, {
           status: "finished",
           winnerName: enemyName,
           finishReason: `対戦相手がリタイア（降参）したため`
         });
       } catch (error) {
-        console.error("リタイアエラー:", error);
+        console.error(error);
       }
     });
 
     document.getElementById("btn-leave").addEventListener("click", () => {
-      if (unsubscribeRoom) {
-        unsubscribeRoom();
-        unsubscribeRoom = null;
-      }
+      if (unsubscribeRoom) { unsubscribeRoom(); unsubscribeRoom = null; }
       showScreen("menu");
     });
 
@@ -521,11 +579,13 @@
       registerScreen.classList.add("hidden");
       menuScreen.classList.add("hidden");
       gameScreen.classList.add("hidden");
+      friendScreen.classList.add("hidden");
 
       if (screenType === "login") loginScreen.classList.remove("hidden");
       if (screenType === "register") registerScreen.classList.remove("hidden");
       if (screenType === "menu") menuScreen.classList.remove("hidden");
       if (screenType === "game") gameScreen.classList.remove("hidden");
+      if (screenType === "friend") friendScreen.classList.remove("hidden");
     }
   </script>
 </body>
