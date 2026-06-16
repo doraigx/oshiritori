@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりアプリ - マッチング機能</title>
+  <title>しりとりアプリ - 完全対戦版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -50,7 +50,6 @@
     .hidden { display: none; }
     .user-info { margin-bottom: 20px; font-weight: bold; color: #555; text-align: left; }
     
-    /* フレックスボックスで入力欄とボタンを横並びにするスタイル */
     .flex-group {
       display: flex;
       gap: 10px;
@@ -58,6 +57,27 @@
     }
     .flex-group input { margin-bottom: 0; flex: 2; }
     .flex-group button { flex: 1; padding: 12px 10px; font-size: 14px; }
+
+    /* しりとり用の新スタイル */
+    .word-display {
+      font-size: 32px;
+      font-weight: bold;
+      color: #333;
+      margin: 20px 0;
+      background: #f0f4f8;
+      padding: 15px;
+      border-radius: 8px;
+    }
+    .turn-badge {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 15px;
+    }
+    .my-turn { background-color: #e6f4ea; color: #137333; }
+    .enemy-turn { background-color: #fce8e6; color: #c5221f; }
   </style>
 </head>
 <body>
@@ -95,7 +115,17 @@
 
     <div id="game-screen" class="hidden">
       <h2 id="room-title">部屋ID: ------</h2>
-      <div id="game-status" style="font-weight: bold; margin-bottom: 20px; color: #ea4335;">相手の参加を待っています...</div>
+      <div id="game-status" style="font-weight: bold; color: #555;">相手の参加を待っています...</div>
+      
+      <div id="shiritori-area" class="hidden">
+        <div id="turn-indicator" class="turn-badge">読み込み中...</div>
+        <div class="word-display" id="current-word">ーーー</div>
+        
+        <div class="flex-group">
+          <input type="text" id="shiritori-input" placeholder="次の単語を入力（ひらがな）">
+          <button id="btn-send-word" style="background-color: #34a853;">送信</button>
+        </div>
+      </div>
       
       <button id="btn-leave" style="background-color: #888; margin-top: 20px;">メニューに戻る</button>
     </div>
@@ -104,21 +134,19 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     // ─── 【重要】あなたのFirebaseプロジェクトの設定値に書き換えてください ───
     const firebaseConfig = {
-  apiKey: "AIzaSyDFeeG0cXom0TBmUngUDbBf_0CqKVRqKwg",
-  authDomain: "oshiritori.firebaseapp.com",
-  projectId: "oshiritori",
-  storageBucket: "oshiritori.firebasestorage.app",
-  messagingSenderId: "947062662188",
-  appId: "1:947062662188:web:362b7ccff6e01a5ecd9d89",
-  measurementId: "G-15T7LNJG2J"
-};
+      apiKey: "AIzaSyDFeeG0cXom0TBmUngUDbBf_0CqKVRqKwg",
+      authDomain: "oshiritori.firebaseapp.com",
+      projectId: "oshiritori",
+      storageBucket: "oshiritori.firebasestorage.app",
+      messagingSenderId: "947062662188",
+      appId: "1:947062662188:web:362b7ccff6e01a5ecd9d89",
+      measurementId: "G-15T7LNJG2J"
+    };
 
-
-    // Firebaseの初期化
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
@@ -136,9 +164,18 @@
     const roomTitle = document.getElementById("room-title");
     const gameStatus = document.getElementById("game-status");
 
-    let currentUid = null;
+    // しりとり用要素
+    const shiritoriArea = document.getElementById("shiritori-area");
+    const turnIndicator = document.getElementById("turn-indicator");
+    const currentWord = document.getElementById("current-word");
+    const shiritoriInput = document.getElementById("shiritori-input");
+    const btnSendWord = document.getElementById("btn-send-word");
 
-    // ─── 1. Googleログイン処理 ───
+    let currentUid = null;
+    let activeRoomId = null;
+    let unsubscribeRoom = null; // リアルタイム監視を解除するための関数を入れる箱
+
+    // 1. Googleログイン処理
     document.getElementById("btn-login").addEventListener("click", async () => {
       try {
         const result = await signInWithPopup(auth, provider);
@@ -150,7 +187,7 @@
       }
     });
 
-    // ─── 2. 新規ユーザーチェック ───
+    // 2. 新規ユーザーチェック
     async function checkUserRegistered(uid) {
       const userRef = doc(db, "users", uid);
       const userSnap = await getDoc(userRef);
@@ -164,7 +201,7 @@
       }
     }
 
-    // ─── 3. ユーザーネーム登録処理 ───
+    // 3. ユーザーネーム登録処理
     document.getElementById("btn-register").addEventListener("click", async () => {
       const name = usernameInput.value.trim();
       if (!name) return alert("名前を入力してください。");
@@ -175,7 +212,6 @@
           username: name,
           createdAt: new Date()
         });
-
         showScreen("menu");
         userDisplay.textContent = `プレイヤー: ${name}`;
       } catch (error) {
@@ -184,7 +220,6 @@
       }
     });
 
-    // ─── 4. 8桁のランダムな英数字を生成するヘルパー関数 ───
     function generateRoomId() {
       const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
       let result = "";
@@ -194,7 +229,7 @@
       return result;
     }
 
-    // ─── 5. 対人モード：部屋を作成する処理 ───
+    // 5. 対人モード：部屋を作る
     document.getElementById("btn-create-room").addEventListener("click", async () => {
       if (!currentUid) return alert("ログインしてください");
 
@@ -202,28 +237,28 @@
       let roomRef = doc(db, "rooms", roomId);
       
       try {
-        // 重複チェック：すでに同じ部屋IDが存在するか確認
         let roomSnap = await getDoc(roomRef);
         while (roomSnap.exists()) {
-          roomId = generateRoomId(); // 被っていたら再生成
+          roomId = generateRoomId();
           roomRef = doc(db, "rooms", roomId);
           roomSnap = await getDoc(roomRef);
         }
 
-        // Firestoreに部屋ドキュメントを作成
         await setDoc(roomRef, {
           roomId: roomId,
-          status: "waiting", // waiting(待機中), playing(試合中)
-          players: [currentUid], // 作成者のUIDを入れる
+          status: "waiting",
+          players: [currentUid],
           createdAt: new Date(),
-          lastWord: "",
-          currentTurn: currentUid // 先攻は部屋を作った人
+          lastWord: "しりとり", // 初期ワード
+          currentTurn: currentUid // 作った人が先攻
         });
 
-        // 画面の書き換えと切り替え
+        activeRoomId = roomId;
         roomTitle.textContent = `部屋ID: ${roomId}`;
-        gameStatus.textContent = "相手の参加を待っています...（このIDを友達に伝えてね）";
         showScreen("game");
+        
+        // 部屋のリアルタイム監視を開始！
+        watchRoom(roomId);
 
       } catch (error) {
         console.error("部屋の作成に失敗:", error);
@@ -231,41 +266,36 @@
       }
     });
 
-    // ─── 6. 対人モード：部屋に参加する処理 ───
+    // 6. 対人モード：部屋に入る
     document.getElementById("btn-join-room").addEventListener("click", async () => {
       if (!currentUid) return alert("ログインしてください");
       
-      const targetRoomId = roomIdInput.value.trim().toUpperCase(); // 大文字に統一
+      const targetRoomId = roomIdInput.value.trim().toUpperCase();
       if (!targetRoomId || targetRoomId.length !== 8) return alert("正しい8桁の部屋IDを入力してください");
 
       const roomRef = doc(db, "rooms", targetRoomId);
       
       try {
         const roomSnap = await getDoc(roomRef);
-        
-        if (!roomSnap.exists()) {
-          return alert("指定された部屋が見つかりません。");
-        }
+        if (!roomSnap.exists()) return alert("指定された部屋が見つかりません。");
 
         const roomData = roomSnap.data();
-
         if (roomData.status !== "waiting" || roomData.players.length >= 2) {
           return alert("この部屋はすでに満員か、試合が始まっています。");
         }
+        if (roomData.players.includes(currentUid)) return alert("すでに入室しています。");
 
-        if (roomData.players.includes(currentUid)) {
-          return alert("あなたはすでにこの部屋に参加しています。");
-        }
-
-        // 部屋のデータを更新（自分のUIDを追加し、ステータスを試合中に変更）
         await updateDoc(roomRef, {
           players: arrayUnion(currentUid),
           status: "playing"
         });
 
+        activeRoomId = targetRoomId;
         roomTitle.textContent = `部屋ID: ${targetRoomId}`;
-        gameStatus.textContent = "対戦相手が参加しました！試合開始！";
         showScreen("game");
+        
+        // 部屋のリアルタイム監視を開始！
+        watchRoom(targetRoomId);
 
       } catch (error) {
         console.error("部屋への参加に失敗:", error);
@@ -273,12 +303,83 @@
       }
     });
 
-    // メニューに戻るボタン
+    // ─── 7. 【新設】部屋のリアルタイム同期（超重要） ───
+    function watchRoom(roomId) {
+      // 過去の監視があれば一回消す
+      if (unsubscribeRoom) unsubscribeRoom();
+
+      // onSnapshotで指定したドキュメントの動きをずっと見張る
+      unsubscribeRoom = onSnapshot(doc(db, "rooms", roomId), (snapshot) => {
+        if (!snapshot.exists()) return;
+        
+        const data = snapshot.data();
+        
+        if (data.status === "waiting") {
+          gameStatus.textContent = "相手の参加を待っています...（このIDを友達に伝えてね）";
+          shiritoriArea.classList.add("hidden");
+        } 
+        
+        else if (data.status === "playing") {
+          gameStatus.textContent = "試合中！";
+          shiritoriArea.classList.remove("hidden");
+          
+          // 最新のワードを表示
+          currentWord.textContent = data.lastWord || "しりとり";
+          
+          // 手番の判定
+          if (data.currentTurn === currentUid) {
+            turnIndicator.textContent = "あなたの番です！";
+            turnIndicator.className = "turn-badge my-turn";
+            shiritoriInput.disabled = false;
+            btnSendWord.disabled = false;
+          } else {
+            turnIndicator.textContent = "相手の番です...";
+            turnIndicator.className = "turn-badge enemy-turn";
+            shiritoriInput.disabled = true;
+            btnSendWord.disabled = true;
+          }
+        }
+      });
+    }
+
+    // ─── 8. 【新設】ワード送信処理 ───
+    btnSendWord.addEventListener("click", async () => {
+      const input = shiritoriInput.value.trim();
+      if (!input) return;
+
+      // 簡単なルールチェック（例：「ん」で終わったら負け、などは後から足せます）
+      // 本来は「前の文字の後ろ」と「今の文字の頭」が合っているか確認するロジックが必要ですが、まずは送信の同期を優先
+      
+      const roomRef = doc(db, "rooms", activeRoomId);
+      
+      try {
+        const roomSnap = await getDoc(roomRef);
+        const roomData = roomSnap.data();
+        
+        // 相手のUIDを見つける
+        const nextTurnUid = roomData.players.find(uid => uid !== currentUid);
+
+        // Firestoreのデータを更新（ワードを上書き、手番を相手にする）
+        await updateDoc(roomRef, {
+          lastWord: input,
+          currentTurn: nextTurnUid
+        });
+
+        shiritoriInput.value = ""; // 入力欄をクリア
+      } catch (error) {
+        console.error("ワード送信エラー:", error);
+      }
+    });
+
+    // メニューに戻るときは監視を止める
     document.getElementById("btn-leave").addEventListener("click", () => {
+      if (unsubscribeRoom) {
+        unsubscribeRoom();
+        unsubscribeRoom = null;
+      }
       showScreen("menu");
     });
 
-    // ─── 画面切り替えマネージャー ───
     function showScreen(screenType) {
       loginScreen.classList.add("hidden");
       registerScreen.classList.add("hidden");
