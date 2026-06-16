@@ -148,7 +148,7 @@
     <div id="register-screen" class="game-card hidden" style="text-align: center;">
       <h1>プロフィール登録</h1>
       <p>ユーザーネームを決めてください</p>
-      <input type="text" id="username-input" placeholder="ここに名前を入力">
+      <input type="text" id="username-input" placeholder="ここに名前を入力" autocomplete="off">
       <button id="btn-register">登録して次へ</button>
     </div>
 
@@ -178,7 +178,7 @@
             <h3>対人モード</h3>
             <button id="btn-create-room" style="background-color: #f4b400; margin-bottom: 16px;">新しく部屋を作る</button>
             <div class="flex-group">
-              <input type="text" id="room-id-input" placeholder="4桁の部屋IDを入力">
+              <input type="text" id="room-id-input" placeholder="4桁の部屋IDを入力" autocomplete="off">
               <button id="btn-join-room" style="background-color: #4285f4;">部屋に入る</button>
             </div>
           </div>
@@ -220,7 +220,7 @@
         <div class="game-card">
           <h3>➕ フレンド追加</h3>
           <div class="flex-group" style="margin-bottom: 20px;">
-            <input type="text" id="friend-search-input" placeholder="例: XXXXX#1234">
+            <input type="text" id="friend-search-input" placeholder="例: XXXXX#1234" autocomplete="off">
             <button id="btn-add-friend" style="background-color: #9c27b0;">追加</button>
           </div>
           <button id="btn-friend-back" style="background-color: #888;">メニューに戻る</button>
@@ -240,7 +240,7 @@
         <div class="word-display" id="current-word">ーーー</div>
         
         <div class="flex-group">
-          <input type="text" id="shiritori-input" placeholder="次の単語を入力（ひらがな）">
+          <input type="text" id="shiritori-input" placeholder="次の単語を入力（ひらがな）" autocomplete="off">
           <button id="btn-send-word" style="background-color: #34a853;">送信</button>
         </div>
 
@@ -355,7 +355,7 @@
       return `${y}/${m}/${d} ${hr}:${min}`;
     };
 
-    // ─── 追加：Googleログインボタンのクリックイベント ───
+    // Googleログインボタンのクリックイベント
     document.getElementById("btn-login").addEventListener("click", async () => {
       try {
         await signInWithPopup(auth, provider);
@@ -897,14 +897,15 @@
           const shingiRemaining = 10 - myUsedShingi;
           shingiCounter.textContent = `審議残り: ${shingiRemaining >= 0 ? shingiRemaining : 0}回`;
 
+          // ─── 【重要修正】自分の番＝相手から流れてきた単語を審議できる状態 ───
           if (data.currentTurn === currentUid) {
             turnIndicator.textContent = "あなたの番です！"; turnIndicator.className = "turn-badge my-turn";
             shiritoriInput.disabled = false; btnSendWord.disabled = false; 
-            btnShingi.disabled = true; 
+            btnShingi.disabled = false;  // 自分のターンなので、相手の前回のワードに審議（ダウト）できる
           } else {
             turnIndicator.textContent = "相手の番です..."; turnIndicator.className = "turn-badge enemy-turn";
             shiritoriInput.disabled = true; btnSendWord.disabled = true; 
-            btnShingi.disabled = false;
+            btnShingi.disabled = true;   // 相手のターン中（＝自分が送信した直後）は、審議できない
           }
           startLocalTimer(data);
         } 
@@ -939,7 +940,8 @@
       });
     }
 
-    btnSendWord.addEventListener("click", async () => {
+    // 単語送信処理の共通関数化（ボタンクリック・Enterキー共有用）
+    async function handleSendWord() {
       let input = shiritoriInput.value.trim();
       if (!input) return;
       if (!/^[ぁ-んー]+$/.test(input)) return alert("ひらがなだけで入力してください！");
@@ -983,15 +985,30 @@
         });
         shiritoriInput.value = ""; 
       } catch (error) { console.error(error); }
+    }
+
+    // 送信ボタンのイベント
+    btnSendWord.addEventListener("click", handleSendWord);
+
+    // ─── 追加：Enterキーでの送信イベント ───
+    shiritoriInput.addEventListener("keydown", (e) => {
+      // 変換確定時のEnterで送信されないよう、isComposingをチェック
+      if (e.key === "Enter" && !e.isComposing) {
+        e.preventDefault(); // ページ改行などのデフォルト挙動を防ぐ
+        if (!btnSendWord.disabled) {
+          handleSendWord();
+        }
+      }
     });
 
+    // ─── 修正：審議ボタン（自分の番で押し、ミスした相手にターンを突き返す） ───
     btnShingi.addEventListener("click", async () => {
       const roomRef = doc(db, "rooms", activeRoomId);
       try {
         const roomSnap = await getDoc(roomRef);
         const roomData = roomSnap.data();
         const currentShingiCount = roomData.shingiCounts && roomData.shingiCounts[currentUid] ? roomData.shingiCounts[currentUid] : 0;
-        const nextTurnUid = roomData.players.find(uid => uid !== currentUid); 
+        const nextTurnUid = roomData.players.find(uid => uid !== currentUid); // 相手のUID
 
         if (!confirm(`相手が出した単語「${roomData.lastWord}」を物言いにし、やり直しを求めますか？`)) return;
 
@@ -999,12 +1016,13 @@
         const updatedCounts = { ...roomData.shingiCounts, [currentUid]: currentShingiCount + 1 };
 
         const wordsList = roomData.usedWords || ["しりとり"];
-        if (wordsList.length > 1) { wordsList.pop(); }
-        const rolledBackWord = wordsList[wordsList.length - 1] || "しりとり";
+        if (wordsList.length > 1) { wordsList.pop(); } // 直前の相手の間違ったワードを削除
+        const rolledBackWord = wordsList[wordsList.length - 1] || "しりとり"; // さらにその前のワードに戻す
 
+        // ターンを「相手（nextTurnUid）」に差し戻す
         await updateDoc(roomRef, {
           shingiCounts: updatedCounts, 
-          currentTurn: nextTurnUid, 
+          currentTurn: nextTurnUid, // 相手の番にする
           lastWord: rolledBackWord, 
           usedWords: wordsList
         });
