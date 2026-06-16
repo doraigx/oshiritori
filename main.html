@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりポータル - 完全版</title>
+  <title>しりとりポータル - ログイン維持完全版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -149,13 +149,20 @@
     .lose-text { color: #c5221f; font-weight: bold; }
     
     .btn-small-edit { background-color: #666; font-size: 11px; padding: 4px 8px; width: auto; border-radius: 4px; margin-left: 8px; }
+    
+    /* ローディング表示 */
+    #loading-status { font-size: 14px; color: #666; margin-bottom: 10px; }
   </style>
 </head>
 <body>
 
   <div class="container">
     <h1>しりとりポータル</h1>
+    
+    <!-- アプリ起動時の状態チェック表示 -->
+    <div id="loading-status">接続チェック中...</div>
 
+    <!-- 招待通知エリア -->
     <div id="invite-notification-zone" class="invite-alert-box hidden">
       <span id="invite-msg-text">〇〇から対戦申し込み！</span>
       <div class="action-group" style="margin-top: 10px;">
@@ -164,17 +171,20 @@
       </div>
     </div>
 
-    <div id="login-screen">
+    <!-- 1. 初期ログイン画面 -->
+    <div id="login-screen" class="hidden">
       <p>ゲームを始めるにはGoogleアカウントでログインしてください。</p>
       <button id="btn-login">Googleでログイン</button>
     </div>
 
+    <!-- 2. 初回のみ表示されるユーザーネーム登録画面 -->
     <div id="register-screen" class="hidden">
       <p>ユーザーネームを決めてください</p>
       <input type="text" id="username-input" placeholder="例: どーらい">
       <button id="btn-register">登録して次へ</button>
     </div>
 
+    <!-- 3. ログイン完了後のメインメニュー画面 -->
     <div id="menu-screen" class="hidden">
       <div class="user-info">
         <span id="user-display">プレイヤー: ----</span>
@@ -201,6 +211,7 @@
       </div>
     </div>
 
+    <!-- 5. フレンド管理・オンライン画面 -->
     <div id="friend-screen" class="hidden">
       <h2>フレンド・オンライン</h2>
       <div class="user-info" id="friend-my-tag" style="color: #9c27b0; font-weight: bold;">あなたのタグ: ----</div>
@@ -217,6 +228,7 @@
       <button id="btn-friend-back" style="background-color: #888; margin-top: 10px;">メニューに戻る</button>
     </div>
 
+    <!-- 4. 対戦メイン画面 -->
     <div id="game-screen" class="hidden">
       <h2 id="room-title">部屋ID: ----</h2>
       <div id="game-status" style="font-weight: bold; color: #555;">相手の参加を待っています...</div>
@@ -248,7 +260,8 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+    // 変更：onAuthStateChanged をインポートに追加
+    import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
     import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -266,6 +279,7 @@
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
+    const loadingStatus = document.getElementById("loading-status");
     const loginScreen = document.getElementById("login-screen");
     const registerScreen = document.getElementById("register-screen");
     const menuScreen = document.getElementById("menu-screen");
@@ -312,7 +326,6 @@
     let currentRoomPlayers = [];
     let isHistorySaved = false;
 
-    // 小文字を大文字に変換するマップ（ごきしょ➔ようかん 対策）
     const smallToLargeMap = { 'ゃ': 'や', 'ゅ': 'ゆ', 'ょ': 'よ', 'っ': 'つ' };
 
     function generateRoomId() {
@@ -324,14 +337,31 @@
 
     function generateUserTag() { return Math.floor(1000 + Math.random() * 9000).toString(); }
 
+    // ─── 確定枠：アプリ起動時に過去のログイン情報を自動的に復旧・維持するリスナー ───
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        // ログイン状態が残っている場合、自動でデータを読み込んでメイン画面へ
+        currentUid = user.uid;
+        loadingStatus.textContent = ""; // ローディング表示を消す
+        await checkUserRegistered(user.uid);
+      } else {
+        // ログイン情報がない場合、初めてログイン画面を表示する
+        currentUid = null;
+        loadingStatus.textContent = "";
+        showScreen("login");
+      }
+    });
+
+    // ログインボタンのクリックイベント
     document.getElementById("btn-login").addEventListener("click", async () => {
       try {
-        const result = await signInWithPopup(auth, provider);
-        currentUid = result.user.uid;
-        await checkUserRegistered(result.user.uid);
+        loadingStatus.textContent = "ログイン認証中...";
+        // signInWithPopupを実行するとブラウザに自動でセッションが保存されます
+        await signInWithPopup(auth, provider);
       } catch (error) {
         console.error(error);
-        alert("ログインエラーが発生しました。");
+        loadingStatus.textContent = "";
+        alert("ログインに失敗しました。");
       }
     });
 
@@ -378,14 +408,13 @@
       } catch (error) { console.error(error); }
     });
 
-    // ─── 新設：プレイヤーネームの変更機能 ───
     document.getElementById("btn-edit-name").addEventListener("click", async () => {
       const oldSnap = await getDoc(doc(db, "users", currentUid));
       if (!oldSnap.exists()) return;
       const oldData = oldSnap.data();
 
       const newName = prompt("新しいユーザーネームを入力してください：", oldData.username);
-      if (newName === null) return; // キャンセル
+      if (newName === null) return;
       const trimmedName = newName.trim();
       
       if (!trimmedName) return alert("名前を入力してください。");
@@ -462,7 +491,6 @@
       } catch (e) { console.error(e); }
     }
 
-    // オートマッチング（自動対戦）機能
     document.getElementById("btn-free").addEventListener("click", async () => {
       isFriendMatchMode = false;
       gameStatus.textContent = "対戦相手を探しています...";
@@ -775,11 +803,9 @@
           return alert(`「${input}」はすでにこの試合で使われています！別の単語を出してください。`);
         }
 
-        // ─── 改善：ごきしょ➔ようかん などの小文字大文字の柔軟判定 ───
         let lastChar = lastWord.slice(-1);
         if (lastChar === "ー" && lastWord.length > 1) lastChar = lastWord.slice(-2, -1);
         
-        // 前の文字の末尾が小文字（ゃゅょっ）なら、大文字に補正して判定する
         let requiredStartChar = lastChar;
         if (smallToLargeMap[lastChar]) {
           requiredStartChar = smallToLargeMap[lastChar];
@@ -809,7 +835,6 @@
       } catch (error) { console.error(error); }
     });
 
-    // ─── 修正：審議ボタンで負けにならず、単語を無効化してやり直させる挙動 ───
     btnShingi.addEventListener("click", async () => {
       const roomRef = doc(db, "rooms", activeRoomId);
       try {
@@ -817,16 +842,14 @@
         const roomData = roomSnap.data();
         
         const currentShingiCount = roomData.shingiCounts && roomData.shingiCounts[currentUid] ? roomData.shingiCounts[currentUid] : 0;
-        const nextTurnUid = roomData.players.find(uid => uid !== currentUid); // 相手のUID
+        const nextTurnUid = roomData.players.find(uid => uid !== currentUid);
 
         if (!confirm(`相手が出した単語「${roomData.lastWord}」を物言いにし、やり直しを求めますか？`)) return;
 
         clearInterval(countdownInterval);
         const updatedCounts = { ...roomData.shingiCounts, [currentUid]: currentShingiCount + 1 };
 
-        // 試合を終わらせず、ターンを相手（nextTurnUid）に戻し、単語を1つ前のもの（usedWordsの最後から2番目）に巻き戻す
         const wordsList = roomData.usedWords || ["しりとり"];
-        // 今の不正単語を履歴から削除
         if (wordsList.length > 1) {
           wordsList.pop();
         }
@@ -834,8 +857,8 @@
 
         await updateDoc(roomRef, {
           shingiCounts: updatedCounts,
-          currentTurn: nextTurnUid, // ターンを相手に差し戻す！
-          lastWord: rolledBackWord, // 単語を巻き戻す
+          currentTurn: nextTurnUid,
+          lastWord: rolledBackWord,
           usedWords: wordsList
         });
 
