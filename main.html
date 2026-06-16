@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>しりとりアプリ - ログイン</title>
+  <style>
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      background-color: #f5f7fb;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      text-align: center;
+      width: 90%;
+      max-width: 400px;
+    }
+    h1 { color: #333; margin-bottom: 24px; }
+    button {
+      background-color: #4285f4;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      width: 100%;
+      transition: background 0.2s;
+    }
+    button:hover { background-color: #357ae8; }
+    input[type="text"] {
+      width: calc(100% - 24px);
+      padding: 12px;
+      font-size: 16px;
+      margin-bottom: 16px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+    .hidden { display: none; }
+    .user-info { margin-bottom: 20px; font-weight: bold; color: #555; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>しりとりポータル</h1>
+
+    <div id="login-screen">
+      <p>ゲームを始めるにはGoogleアカウントでログインしてください。</p>
+      <button id="btn-login">Googleでログイン</button>
+    </div>
+
+    <div id="register-screen" class="hidden">
+      <p>ユーザーネームを決めてください</p>
+      <input type="text" id="username-input" placeholder="例: どーらい">
+      <button id="btn-register">登録して次へ</button>
+    </div>
+
+    <div id="menu-screen" class="hidden">
+      <div class="user-info" id="user-display"></div>
+      <p>次のステップ：モード選択の実装へ！</p>
+      <button id="btn-free" style="background-color: #34a853; margin-bottom: 10px;">フリーモード（開発中）</button>
+      <button id="btn-vs" style="background-color: #ea4335;">対人モード（開発中）</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    // ─── 【重要】あなたのFirebaseプロジェクトの設定値に書き換えてください ───
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_AUTH_DOMAIN",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_STORAGE_BUCKET",
+      messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    // Firebaseの初期化
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+
+    // HTML要素の取得
+    const loginScreen = document.getElementById("login-screen");
+    const registerScreen = document.getElementById("register-screen");
+    const menuScreen = document.getElementById("menu-screen");
+    const usernameInput = document.getElementById("username-input");
+    const userDisplay = document.getElementById("user-display");
+
+    let currentUid = null;
+
+    // 1. ログインボタンを押したとき
+    document.getElementById("btn-login").addEventListener("click", async () => {
+      try {
+        const result = await signInWithPopup(auth, provider);
+        currentUid = result.user.uid;
+        await checkUserRegistered(result.user.uid);
+      } catch (error) {
+        console.error("ログインに失敗しました:", error);
+        alert("ログインエラーが発生しました。");
+      }
+    });
+
+    // 2. Firestoreにユーザーネームが登録されているかチェック
+    async function checkUserRegistered(uid) {
+      const userRef = doc(db, "users", uid);
+      const userSnap = await getDoc(userRef);
+
+      if (userSnap.exists()) {
+        // すでに登録があればメインメニューへ
+        const userData = userSnap.data();
+        showScreen("menu");
+        userDisplay.textContent = `プレイヤー: ${userData.username}`;
+      } else {
+        // なければ名前入力画面へ
+        showScreen("register");
+      }
+    }
+
+    // 3. ユーザーネーム登録ボタンを押したとき
+    document.getElementById("btn-register").addEventListener("click", async () => {
+      const name = usernameInput.value.trim();
+      if (!name) return alert("名前を入力してください。");
+
+      try {
+        // Firestoreの 'users' コレクションに保存
+        await setDoc(doc(db, "users", currentUid), {
+          uid: currentUid,
+          username: name,
+          createdAt: new Date()
+        });
+
+        showScreen("menu");
+        userDisplay.textContent = `プレイヤー: ${name}`;
+      } catch (error) {
+        console.error("登録に失敗しました:", error);
+        alert("データベースへの保存に失敗しました。Firestoreのルールを確認してください。");
+      }
+    });
+
+    // 画面切り替えの簡易ヘルパー
+    function showScreen(screenType) {
+      loginScreen.classList.add("hidden");
+      registerScreen.classList.add("hidden");
+      menuScreen.classList.add("hidden");
+
+      if (screenType === "login") loginScreen.classList.remove("hidden");
+      if (screenType === "register") registerScreen.classList.remove("hidden");
+      if (screenType === "menu") menuScreen.classList.remove("hidden");
+    }
+  </script>
+</body>
+</html>
