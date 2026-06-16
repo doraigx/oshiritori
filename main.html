@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりポータル - PC最適化・日時表示版</title>
+  <title>しりとりポータル - フルカードレイアウト版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -16,41 +16,42 @@
       padding: 20px;
       box-sizing: border-box;
     }
+    /* 全体を包むメインのコンテナ */
     .container {
-      background: white;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
       width: 100%;
-      max-width: 400px; /* スマホ時のデフォルト幅 */
+      max-width: 450px;
       transition: max-width 0.3s ease;
       box-sizing: border-box;
     }
     
-    /* ─── PC向け大画面レイアウト最適化 ─── */
+    /* ─── PC向け大画面レイアウト（2カラム） ─── */
     @media (min-width: 850px) {
       .container {
-        max-width: 900px; /* PCでは画面をワイドに広く使う */
+        max-width: 1000px;
       }
       .pc-layout-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr; /* 左右2カラムに分割 */
-        gap: 40px;
-        text-align: left;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        align-items: start;
       }
-      .pc-left-col {
-        border-right: 1px solid #eee;
-        padding-right: 20px;
-      }
-      .pc-right-col {
-        padding-left: 20px;
-      }
-      h3 { margin-top: 0 !important; }
     }
 
-    h1 { color: #333; margin-bottom: 24px; text-align: center; }
+    h1 { color: #333; margin-bottom: 24px; text-align: center; font-size: 28px; }
     h2 { text-align: center; color: #333; }
-    h3 { color: #555; text-align: left; margin-top: 20px; margin-bottom: 10px; }
+    h3 { color: #444; text-align: left; margin-top: 0; margin-bottom: 16px; font-size: 18px; font-weight: bold; }
+    
+    /* ─── 新設：独立した各カードのスタイル ─── */
+    .game-card {
+      background: white;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      margin-bottom: 20px;
+      box-sizing: border-box;
+      text-align: left;
+    }
+    
     button {
       background-color: #4285f4;
       color: white;
@@ -60,9 +61,12 @@
       border-radius: 6px;
       cursor: pointer;
       width: 100%;
-      transition: background 0.2s;
+      transition: background 0.2s, transform 0.1s;
+      font-weight: bold;
     }
     button:hover { background-color: #357ae8; }
+    button:active { transform: scale(0.98); }
+    
     input[type="text"], select {
       box-sizing: border-box;
       width: 100%;
@@ -73,128 +77,56 @@
       border-radius: 6px;
       background-color: white;
     }
-    hr { border: 0; border-top: 1px solid #eee; margin: 20px 0; }
     .hidden { display: none; }
-    .user-info { margin-bottom: 8px; font-weight: bold; color: #555; text-align: left; display: flex; justify-content: space-between; align-items: center; }
-    .status-select-zone { text-align: left; margin-bottom: 20px; font-size: 14px; color: #666; display: flex; align-items: center; gap: 8px; }
+    
+    /* ユーザー情報・ステータス周り */
+    .user-info { margin-bottom: 12px; font-weight: bold; color: #333; display: flex; justify-content: space-between; align-items: center; font-size: 16px; }
+    .status-select-zone { font-size: 14px; color: #666; display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
     .status-select-zone select { margin-bottom: 0; width: auto; padding: 6px 10px; font-size: 14px; }
 
     .flex-group {
       display: flex;
       gap: 10px;
-      margin-bottom: 16px;
+      margin-bottom: 0;
     }
     .flex-group input { margin-bottom: 0; flex: 2; }
     .flex-group button { flex: 1; padding: 12px 10px; font-size: 14px; }
 
-    /* しりとり用 */
-    .word-display {
-      font-size: 32px;
-      font-weight: bold;
-      color: #333;
-      margin: 20px 0;
-      background: #f0f4f8;
-      padding: 15px;
-      border-radius: 8px;
-      text-align: center;
-    }
-    .turn-badge {
-      display: inline-block;
-      padding: 6px 12px;
-      border-radius: 20px;
-      font-size: 14px;
-      font-weight: bold;
-      margin-bottom: 15px;
-      text-align: center;
-    }
+    /* しりとり画面用 */
+    .word-display { font-size: 32px; font-weight: bold; color: #333; margin: 20px 0; background: #f0f4f8; padding: 15px; border-radius: 8px; text-align: center; }
+    .turn-badge { display: inline-block; padding: 6px 12px; border-radius: 20px; font-size: 14px; font-weight: bold; margin-bottom: 15px; text-align: center; }
     .my-turn { background-color: #e6f4ea; color: #137333; }
     .enemy-turn { background-color: #fce8e6; color: #c5221f; }
-    
-    .timer-display {
-      font-size: 24px;
-      font-weight: bold;
-      color: #ea4335;
-      margin-bottom: 15px;
-      background: #fff5f5;
-      padding: 8px;
-      border-radius: 6px;
-      border: 1px solid #fcedeb;
-      text-align: center;
-    }
-
-    .action-group {
-      display: flex;
-      gap: 10px;
-      margin-top: 10px;
-    }
+    .timer-display { font-size: 24px; font-weight: bold; color: #ea4335; margin-bottom: 15px; background: #fff5f5; padding: 8px; border-radius: 6px; border: 1px solid #fcedeb; text-align: center; }
+    .action-group { display: flex; gap: 10px; margin-top: 10px; }
     .btn-action { font-size: 14px; padding: 10px; }
     .shingi-count-text { font-size: 12px; color: #666; margin-top: 4px; text-align: center; }
 
-    /* フレンド機能用 */
-    .friend-list {
-      text-align: left;
-      background: #f9f9f9;
-      padding: 10px;
-      border-radius: 6px;
-      max-height: 250px;
-      overflow-y: auto;
-      margin-bottom: 15px;
-      border: 1px solid #eee;
-    }
-    .friend-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 0;
-      border-bottom: 1px solid #eee;
-      color: #444;
-      font-size: 14px;
-    }
-    .friend-name-link {
-      cursor: pointer;
-      text-decoration: underline;
-      color: #4285f4;
-    }
+    /* フレンド画面用 */
+    .friend-list { text-align: left; background: #f9f9f9; padding: 10px; border-radius: 6px; max-height: 250px; overflow-y: auto; margin-bottom: 15px; border: 1px solid #eee; }
+    .friend-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee; color: #444; font-size: 14px; }
+    .friend-name-link { cursor: pointer; text-decoration: underline; color: #4285f4; }
     .status-badge { font-size: 11px; padding: 2px 6px; border-radius: 10px; font-weight: bold; }
     .status-online { background-color: #e6f4ea; color: #137333; }
     .status-offline { background-color: #f1f3f4; color: #5f6368; }
     .btn-invite { background-color: #34a853; font-size: 12px; padding: 6px 10px; width: auto; border-radius: 4px; }
+    .invite-alert-box { background-color: #fff3cd; border: 2px dashed #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px; color: #856404; text-align: left; }
 
-    .invite-alert-box { background-color: #fff3cd; border: 2px dashed #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px; color: #856404; }
-
-    /* 履歴表示用 */
-    .history-section {
-      margin-top: 25px;
-      text-align: left;
-    }
-    .history-card {
-      background: #fafafa;
-      border: 1px solid #eef0f4;
-      padding: 12px;
-      border-radius: 6px;
-      margin-bottom: 8px;
-      font-size: 13px;
-      position: relative;
-    }
-    .history-time {
-      display: block;
-      font-size: 11px;
-      color: #aaa;
-      margin-bottom: 4px;
-      font-weight: normal;
-    }
+    /* 戦績・履歴のカード内スタイル */
+    .stats-display { font-size: 28px; font-weight: bold; color: #333; text-align: center; margin: 10px 0; }
+    .stats-sub { font-size: 14px; color: #666; text-align: center; block-size: auto; }
+    .history-card { background: #fafafa; border: 1px solid #eef0f4; padding: 12px; border-radius: 6px; margin-bottom: 8px; font-size: 13px; }
+    .history-time { display: block; font-size: 11px; color: #aaa; margin-bottom: 4px; }
     .win-text { color: #137333; font-weight: bold; }
     .lose-text { color: #c5221f; font-weight: bold; }
     
     .btn-small-edit { background-color: #666; font-size: 11px; padding: 4px 8px; width: auto; border-radius: 4px; margin-left: 8px; }
-    #loading-status { font-size: 14px; color: #666; margin-bottom: 10px; text-align: center; }
+    #loading-status { font-size: 16px; color: #666; margin-bottom: 10px; text-align: center; font-weight: bold; }
   </style>
 </head>
 <body>
 
   <div class="container">
-    <h1>しりとりポータル</h1>
-    
     <div id="loading-status">接続チェック中...</div>
 
     <!-- 招待通知エリア -->
@@ -207,96 +139,119 @@
     </div>
 
     <!-- 1. 初期ログイン画面 -->
-    <div id="login-screen" class="hidden">
-      <p style="text-align:center;">ゲームを始めるにはGoogleアカウントでログインしてください。</p>
+    <div id="login-screen" class="game-card hidden" style="text-align: center;">
+      <h1>しりとりポータル</h1>
+      <p>ゲームを始めるにはGoogleアカウントでログインしてください。</p>
       <button id="btn-login">Googleでログイン</button>
     </div>
 
     <!-- 2. 初回のみ表示されるユーザーネーム登録画面 -->
-    <div id="register-screen" class="hidden">
-      <p style="text-align:center;">ユーザーネームを決めてください</p>
+    <div id="register-screen" class="game-card hidden" style="text-align: center;">
+      <h1>プロフィール登録</h1>
+      <p>ユーザーネームを決めてください</p>
       <input type="text" id="username-input" placeholder="例: どーらい">
       <button id="btn-register">登録して次へ</button>
     </div>
 
-    <!-- 3. ログイン完了後のメインメニュー画面 (PCでは2カラムグリッド化) -->
+    <!-- 3. ログイン完了後のメインメニュー画面 (各パーツをカードに独立化) -->
     <div id="menu-screen" class="hidden">
+      <h1 style="margin-bottom: 30px;">しりとりポータル</h1>
+      
       <div class="pc-layout-grid">
         
-        <!-- 左カラム：操作エリア -->
+        <!-- 左側カラム：操作系カード群 -->
         <div class="pc-left-col">
-          <div class="user-info">
-            <span id="user-display">プレイヤー: ----</span>
-            <button id="btn-edit-name" class="btn-small-edit">✏️ 名前変更</button>
+          
+          <!-- カード①：プレイヤー情報 -->
+          <div class="game-card">
+            <h3>👤 プレイヤー情報</h3>
+            <div class="user-info">
+              <span id="user-display">プレイヤー: ----</span>
+              <button id="btn-edit-name" class="btn-small-edit">✏️ 名前変更</button>
+            </div>
+            <div class="status-select-zone">
+              <span>自分の状態:</span>
+              <select id="select-my-status">
+                <option value="auto">自動 (開いている時のみON)</option>
+                <option value="online">常にオンライン固定</option>
+                <option value="offline">オフライン (隠れる)</option>
+              </select>
+            </div>
+            <button id="btn-to-friend" style="background-color: #9c27b0; padding: 12px;">👥 フレンド・オンラインリスト</button>
           </div>
 
-          <div class="status-select-zone">
-            <span>自分の状態:</span>
-            <select id="select-my-status">
-              <option value="auto">自動 (開いている時のみON)</option>
-              <option value="online">常にオンライン固定</option>
-              <option value="offline">オフライン (隠れる)</option>
-            </select>
-          </div>
-
-          <button id="btn-to-friend" style="background-color: #9c27b0; margin-bottom: 15px; padding: 10px;">👥 フレンド画面・オンラインリストを開く</button>
-          <hr>
-          
-          <h3>【対人モード】</h3>
-          <button id="btn-create-room" style="background-color: #f4b400; margin-bottom: 15px;">新しく部屋を作る（4桁ID発行）</button>
-          
-          <div class="flex-group">
-            <input type="text" id="room-id-input" placeholder="4桁の部屋IDを入力">
-            <button id="btn-join-room" style="background-color: #4285f4;">部屋に入る</button>
+          <!-- カード②：対人モード -->
+          <div class="game-card">
+            <h3>⚔️ 対人モード</h3>
+            <button id="btn-create-room" style="background-color: #f4b400; margin-bottom: 16px;">新しく部屋を作る（4桁ID発行）</button>
+            <div class="flex-group">
+              <input type="text" id="room-id-input" placeholder="4桁の部屋IDを入力">
+              <button id="btn-join-room" style="background-color: #4285f4;">部屋に入る</button>
+            </div>
           </div>
           
-          <hr>
-          <h3>【フリーモード】</h3>
-          <button id="btn-free" style="background-color: #34a853; margin-bottom: 15px;">オートマッチング（自動対戦）</button>
+          <!-- カード③：フリーモード -->
+          <div class="game-card">
+            <h3>🌍 フリーモード</h3>
+            <p style="font-size: 14px; color:#666; margin-top:0; margin-bottom:12px;">誰でも入れる公開部屋を探すか、待機部屋を作成します。</p>
+            <button id="btn-free" style="background-color: #34a853;">オートマッチング（自動対戦）</button>
+          </div>
+          
         </div>
 
-        <!-- 右カラム：履歴表示エリア -->
+        <!-- 右側カラム：データ表示系カード群 -->
         <div class="pc-right-col">
-          <div class="history-section">
+          
+          <!-- カード④：累計戦績 -->
+          <div class="game-card">
+            <h3>🏆 累計戦績</h3>
+            <div class="stats-display" id="total-stats-text">0勝 0敗</div>
+            <div class="stats-sub" id="total-wr-text">勝率: --%</div>
+          </div>
+
+          <!-- カード⑤：直近の勝敗履歴 -->
+          <div class="game-card">
             <h3>📊 直近の勝敗履歴 (5件)</h3>
             <div id="history-list-container">履歴はありません</div>
           </div>
+          
         </div>
 
       </div>
     </div>
 
-    <!-- 5. フレンド管理・オンライン画面 (PCでは2カラムグリッド化) -->
+    <!-- 5. フレンド管理・オンライン画面 -->
     <div id="friend-screen" class="hidden">
-      <h2>フレンド・オンライン</h2>
-      <div class="user-info" id="friend-my-tag" style="color: #9c27b0; font-weight: bold; justify-content: center; margin-bottom: 20px;">あなたのタグ: ----</div>
+      <div class="game-card" style="margin-bottom: 20px; text-align: center;">
+        <h2>フレンド・オンライン</h2>
+        <div id="friend-my-tag" style="color: #9c27b0; font-weight: bold; font-size: 16px; margin-top: 10px;">あなたのタグ: ----</div>
+      </div>
       
       <div class="pc-layout-grid">
-        <div class="pc-left-col">
-          <h3>👥 フレンドリスト（名前タップで個人戦績）</h3>
+        <div class="game-card">
+          <h3>👥 フレンドリスト（タップで個人戦績）</h3>
           <div id="friend-list-container" class="friend-list">フレンドはいません</div>
         </div>
         
-        <div class="pc-right-col">
+        <div class="game-card">
           <h3>➕ フレンド追加</h3>
-          <div class="flex-group">
+          <div class="flex-group" style="margin-bottom: 20px;">
             <input type="text" id="friend-search-input" placeholder="例: どーらい#1234">
             <button id="btn-add-friend" style="background-color: #9c27b0;">追加</button>
           </div>
-          <hr style="margin-top: 40px;">
           <button id="btn-friend-back" style="background-color: #888;">メニューに戻る</button>
         </div>
       </div>
     </div>
 
     <!-- 4. 対戦メイン画面 -->
-    <div id="game-screen" class="hidden">
+    <div id="game-screen" class="game-card hidden" style="max-width: 500px; margin: 0 auto;">
       <h2 id="room-title">部屋ID: ----</h2>
-      <div id="game-status" style="font-weight: bold; color: #555; text-align: center; margin-bottom: 15px;">相手の参加を待っています...</div>
+      <div id="game-status" style="font-weight: bold; color: #555; text-align: center; margin-bottom: 20px;">相手の参加を待っています...</div>
       
-      <button id="btn-cancel-invite" class="hidden" style="background-color: #e0a800; color: white; margin-top: 10px; margin-bottom: 10px; font-size: 16px; padding: 12px; width: 100%; border-radius: 6px;">🏳️ 招待を取り消す</button>
+      <button id="btn-cancel-invite" class="hidden" style="background-color: #e0a800; color: white; margin-bottom: 20px; font-size: 16px; padding: 12px;">🏳️ 招待を取り消す</button>
 
-      <div id="shiritori-area" class="hidden" style="max-width: 500px; margin: 0 auto;">
+      <div id="shiritori-area" class="hidden">
         <div id="timer-box" class="timer-display">残り時間: 15秒</div>
         <div style="text-align: center;"><div id="turn-indicator" class="turn-badge">読み込み中...</div></div>
         <div class="word-display" id="current-word">ーーー</div>
@@ -324,7 +279,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDFeeG0cXom0TBmUngUDbBf_0CqKVRqKwg",
@@ -364,6 +319,8 @@
     const shingiCounter = document.getElementById("shingi-counter");
     const timerBox = document.getElementById("timer-box");
     const historyListContainer = document.getElementById("history-list-container");
+    const totalStatsText = document.getElementById("total-stats-text");
+    const totalWrText = document.getElementById("total-wr-text");
     const btnCancelInvite = document.getElementById("btn-cancel-invite");
     const btnLeaveRoom = document.getElementById("btn-leave");
 
@@ -404,7 +361,6 @@
 
     const smallToLargeMap = { 'ゃ': 'や', 'ゅ': 'ゆ', 'ょ': 'よ', 'っ': 'つ' };
 
-    // 日時フォーマット用の補助関数
     const formatTimestamp = (timestamp) => {
       if (!timestamp) return "ーー/ーー ーー:ーー";
       const date = timestamp.toDate();
@@ -538,7 +494,7 @@
       }, 10000);
     }
 
-    // ─── 修正：対戦日時の取得・表示の組み込み ───
+    // ─── 修正：履歴読み込みと同時に「累計戦績」をカウント・表示 ───
     async function loadGlobalHistory() {
       try {
         const historyRef = collection(db, "histories");
@@ -546,16 +502,36 @@
         
         onSnapshot(q, async (snapshot) => {
           if (snapshot.empty) {
-            historyListContainer.innerHTML = "<div class='history-card' style='text-align:center;'>履歴はありません</div>";
+            historyListContainer.innerHTML = "<div style='text-align:center; color:#999; font-size:13px; padding:10px;'>履歴はありません</div>";
+            totalStatsText.textContent = "0勝 0敗";
+            totalWrText.textContent = "勝率: --%";
             return;
           }
+          
           let rawList = [];
-          snapshot.forEach(doc => { rawList.push(doc.data()); });
+          let wins = 0;
+          let losses = 0;
+
+          snapshot.forEach(doc => { 
+            const data = doc.data();
+            rawList.push(data); 
+            // 累計戦績の算出
+            if (data.winnerUid === currentUid) { wins++; } else { losses++; }
+          });
+
+          // 戦績カードへの反映
+          totalStatsText.textContent = `${wins}勝 ${losses}敗`;
+          const totalGames = wins + losses;
+          const winRate = totalGames > 0 ? Math.round((wins / totalGames) * 100) : 0;
+          totalWrText.textContent = `勝率: ${winRate}% (総試合数: ${totalGames}戦)`;
+
+          // 履歴リストのソートと成形
           rawList.sort((a, b) => {
             const timeA = a.timestamp ? a.timestamp.toDate().getTime() : 0;
             const timeB = b.timestamp ? b.timestamp.toDate().getTime() : 0;
             return timeB - timeA;
           });
+          
           const displayList = rawList.slice(0, 5);
           let html = "";
           for (const hData of displayList) {
@@ -564,7 +540,6 @@
             const enemySnap = await getDoc(doc(db, "users", enemyUid));
             const enemyName = enemySnap.exists() ? enemySnap.data().username : "不明なプレイヤー";
             
-            // 時間データの成形
             const formattedTime = formatTimestamp(hData.timestamp);
 
             html += `
@@ -626,7 +601,7 @@
           const roomData = targetRoomDoc.data();
           
           if (roomData.players.length >= 2 || roomData.status !== "waiting") {
-            // パス
+            // 先を越された場合
           } else {
             const updatedShingiCounts = { ...roomData.shingiCounts, [currentUid]: 0 };
             await updateDoc(doc(db, "rooms", roomId), {
