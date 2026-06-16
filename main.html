@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりアプリ - 確定オンライン＆招待版</title>
+  <title>しりとりポータル - フル機能版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -60,7 +60,7 @@
     .flex-group input { margin-bottom: 0; flex: 2; }
     .flex-group button { flex: 1; padding: 12px 10px; font-size: 14px; }
 
-    /* しりとり用のスタイル */
+    /* しりとり用 */
     .word-display {
       font-size: 32px;
       font-weight: bold;
@@ -97,17 +97,10 @@
       gap: 10px;
       margin-top: 10px;
     }
-    .btn-action {
-      font-size: 14px;
-      padding: 10px;
-    }
-    .shingi-count-text {
-      font-size: 12px;
-      color: #666;
-      margin-top: 4px;
-    }
+    .btn-action { font-size: 14px; padding: 10px; }
+    .shingi-count-text { font-size: 12px; color: #666; margin-top: 4px; }
 
-    /* フレンド機能用のスタイル */
+    /* フレンド機能用 */
     .friend-list {
       text-align: left;
       background: #f9f9f9;
@@ -127,32 +120,33 @@
       color: #444;
       font-size: 14px;
     }
-    .friend-item:last-child { border-bottom: none; }
-    .status-badge {
-      font-size: 11px;
-      padding: 2px 6px;
-      border-radius: 10px;
-      font-weight: bold;
+    .friend-name-link {
+      cursor: pointer;
+      text-decoration: underline;
+      color: #4285f4;
     }
+    .status-badge { font-size: 11px; padding: 2px 6px; border-radius: 10px; font-weight: bold; }
     .status-online { background-color: #e6f4ea; color: #137333; }
     .status-offline { background-color: #f1f3f4; color: #5f6368; }
-    .btn-invite {
-      background-color: #34a853;
-      font-size: 12px;
-      padding: 6px 10px;
-      width: auto;
-      border-radius: 4px;
-    }
+    .btn-invite { background-color: #34a853; font-size: 12px; padding: 6px 10px; width: auto; border-radius: 4px; }
 
-    /* 招待ポップアップ用通知スタイル */
-    .invite-alert-box {
-      background-color: #fff3cd;
-      border: 2px dashed #ffc107;
-      padding: 15px;
-      border-radius: 8px;
-      margin-bottom: 20px;
-      color: #856404;
+    .invite-alert-box { background-color: #fff3cd; border: 2px dashed #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px; color: #856404; }
+
+    /* 履歴表示用の新しいスタイル */
+    .history-section {
+      margin-top: 25px;
+      text-align: left;
     }
+    .history-card {
+      background: #fafafa;
+      border: 1px solid #eef0f4;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .win-text { color: #137333; font-weight: bold; }
+    .lose-text { color: #c5221f; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -194,18 +188,22 @@
       
       <hr>
       <h3>【フリーモード】</h3>
-      <button id="btn-free" style="background-color: #34a853;">フリーモード（全世界共通）</button>
+      <button id="btn-free" style="background-color: #34a853;">オートマッチング（自動対戦）</button>
+      
+      <div class="history-section">
+        <h3>直近の勝敗履歴 (5件)</h3>
+        <div id="history-list-container">履歴はありません</div>
+      </div>
     </div>
 
     <div id="friend-screen" class="hidden">
       <h2>フレンド・オンライン</h2>
       <div class="user-info" id="friend-my-tag" style="color: #9c27b0;">あなたのタグ: ----</div>
       
-      <h3>フレンドリスト（30秒生存判定付き）</h3>
+      <h3>フレンドリスト（名前タップで戦戦績確認）</h3>
       <div id="friend-list-container" class="friend-list">フレンドはいません</div>
 
       <h3>フレンド追加</h3>
-      <p style="font-size: 12px; color: #666; text-align: left; margin-bottom: 5px;">相手の「名前#4桁数字」を入力してください</p>
       <div class="flex-group">
         <input type="text" id="friend-search-input" placeholder="例: どーらい#1234">
         <button id="btn-add-friend" style="background-color: #9c27b0;">追加</button>
@@ -246,7 +244,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDFeeG0cXom0TBmUngUDbBf_0CqKVRqKwg",
@@ -284,6 +282,7 @@
     const btnRetire = document.getElementById("btn-retire");
     const shingiCounter = document.getElementById("shingi-counter");
     const timerBox = document.getElementById("timer-box");
+    const historyListContainer = document.getElementById("history-list-container");
 
     const inviteZone = document.getElementById("invite-notification-zone");
     const inviteMsgText = document.getElementById("invite-msg-text");
@@ -304,6 +303,8 @@
     let heartBeatInterval = null;
     let remainingTime = 15;
     let incomingRoomId = null;
+    let isFriendMatchMode = false;
+    let currentRoomPlayers = []; // 現在の試合のプレイヤー情報保存用
 
     document.getElementById("btn-login").addEventListener("click", async () => {
       try {
@@ -311,14 +312,12 @@
         currentUid = result.user.uid;
         await checkUserRegistered(result.user.uid);
       } catch (error) {
-        console.error("ログインに失敗しました:", error);
+        console.error(error);
         alert("ログインエラーが発生しました。");
       }
     });
 
-    function generateUserTag() {
-      return Math.floor(1000 + Math.random() * 9000).toString();
-    }
+    function generateUserTag() { return Math.floor(1000 + Math.random() * 9000).toString(); }
 
     async function checkUserRegistered(uid) {
       const userRef = doc(db, "users", uid);
@@ -340,25 +339,18 @@
         startHeartbeat();
         setupFriendsListener();
         setupInviteListener();
-      } else {
-        showScreen("register");
-      }
+        loadGlobalHistory(); // 履歴読み込み
+      } else { showScreen("register"); }
     }
 
     document.getElementById("btn-register").addEventListener("click", async () => {
       const name = usernameInput.value.trim();
       if (!name) return alert("名前を入力してください。");
       if (name.includes("#")) return alert("名前に'#'は使用できません。");
-
       try {
         const tag = generateUserTag();
         await setDoc(doc(db, "users", currentUid), {
-          uid: currentUid,
-          username: name,
-          userTag: tag,
-          friends: [],
-          lastActive: serverTimestamp(),
-          createdAt: new Date()
+          uid: currentUid, username: name, userTag: tag, friends: [], lastActive: serverTimestamp(), createdAt: new Date()
         });
         showScreen("menu");
         userDisplay.textContent = `プレイヤー: ${name}#${tag}`;
@@ -366,20 +358,130 @@
         startHeartbeat();
         setupFriendsListener();
         setupInviteListener();
-      } catch (error) {
-        console.error(error);
-      }
+        loadGlobalHistory();
+      } catch (error) { console.error(error); }
     });
 
     function startHeartbeat() {
       clearInterval(heartBeatInterval);
       updateDoc(doc(db, "users", currentUid), { lastActive: serverTimestamp() });
       heartBeatInterval = setInterval(() => {
-        if (currentUid) {
-          updateDoc(doc(db, "users", currentUid), { lastActive: serverTimestamp() });
-        }
+        if (currentUid) { updateDoc(doc(db, "users", currentUid), { lastActive: serverTimestamp() }); }
       }, 10000);
     }
+
+    // ─── 新設：メニュー下に直近5件の勝敗履歴を表示 ───
+    async function loadGlobalHistory() {
+      try {
+        const historyRef = collection(db, "histories");
+        const q = query(historyRef, where("uids", "array-contains", currentUid), orderBy("timestamp", "desc"), limit(5));
+        
+        onSnapshot(q, async (snapshot) => {
+          if (snapshot.empty) {
+            historyListContainer.innerHTML = "<div class='history-card'>履歴はありません</div>";
+            return;
+          }
+          let html = "";
+          for (const historyDoc of snapshot.docs) {
+            const hData = historyDoc.data();
+            const isWin = hData.winnerUid === currentUid;
+            
+            // 自分じゃない方のUIDから相手の名前を取得
+            const enemyUid = hData.uids.find(id => id !== currentUid);
+            const enemySnap = await getDoc(doc(db, "users", enemyUid));
+            const enemyName = enemySnap.exists() ? enemySnap.data().username : "不明なプレイヤー";
+
+            html += `
+              <div class="history-card">
+                <span class="${isWin ? 'win-text' : 'lose-text'}">[${isWin ? 'WIN' : 'LOSE'}]</span> 
+                vs ${enemyName} <br>
+                <small style="color:#777;">理由: ${hData.reason}</small>
+              </div>
+            `;
+          }
+          historyListContainer.innerHTML = html;
+        });
+      } catch (e) { console.error("履歴取得エラー:", e); }
+    }
+
+    // ─── 新設：フレンドの名前を押したときに個別戦績を出す機能 ───
+    async function showFriendStats(fUid, fName, fTag) {
+      try {
+        const historyRef = collection(db, "histories");
+        const q = query(historyRef, where("uids", "array-contains", currentUid));
+        const snapshot = await getDocs(q);
+        
+        let winCount = 0;
+        let loseCount = 0;
+        
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          // 自分と対象のフレンドの2人が含まれている試合をカウント
+          if (data.uids.includes(fUid)) {
+            if (data.winnerUid === currentUid) winCount++;
+            else loseCount++;
+          }
+        });
+        
+        alert(`📊 【${fName}#${fTag}】 との対戦戦績\n\nあなたのアカウント: ${winCount} 勝 / ${loseCount} 敗`);
+      } catch (e) { console.error(e); }
+    }
+
+    // ─── 新設：オンライン自動マッチングの実装 ───
+    document.getElementById("btn-free").addEventListener("click", async () => {
+      isFriendMatchMode = false;
+      gameStatus.textContent = "対戦相手を探しています...";
+      roomTitle.textContent = "自動マッチング中";
+      showScreen("game");
+
+      try {
+        // 1. statusが"waiting"かつ、まだ自分が作っていないフリーの部屋を検索
+        const roomsRef = collection(db, "rooms");
+        const q = query(roomsRef, where("status", "==", "waiting"), orderBy("createdAt", "asc"), limit(1));
+        const querySnapshot = await getDocs(q);
+
+        if (!querySnapshot.empty) {
+          // 待機中の部屋が見つかったらそこに入る（ゲストとして参戦）
+          const targetRoomDoc = querySnapshot.docs[0];
+          const roomData = targetRoomDoc.data();
+          const roomId = targetRoomDoc.id;
+
+          if (!roomData.players.includes(currentUid)) {
+            const updatedShingiCounts = { ...roomData.shingiCounts, [currentUid]: 0 };
+            await updateDoc(doc(db, "rooms", roomId), {
+              players: arrayUnion(currentUid),
+              shingiCounts: updatedShingiCounts,
+              status: "playing"
+            });
+            activeRoomId = roomId;
+            watchRoom(roomId);
+            return;
+          }
+        }
+
+        // 2. 待機部屋がなければ、自分が新しく待機部屋を作って待つ（ホストになる）
+        let roomId = "FREE_" + Math.floor(1000 + Math.random() * 9000).toString();
+        let roomRef = doc(db, "rooms", roomId);
+        
+        await setDoc(roomRef, {
+          roomId: roomId,
+          status: "waiting",
+          players: [currentUid],
+          createdAt: serverTimestamp(),
+          lastWord: "しりとり",
+          currentTurn: currentUid,
+          shingiCounts: { [currentUid]: 0 }
+        });
+        
+        activeRoomId = roomId;
+        watchRoom(roomId);
+
+      } catch (error) {
+        console.error("オートマッチエラー:", error);
+        alert("マッチングに失敗しました。");
+        showScreen("menu");
+      }
+    });
 
     document.getElementById("btn-add-friend").addEventListener("click", async () => {
       const searchText = friendSearchInput.value.trim();
@@ -393,13 +495,10 @@
         let targetUid = null;
         querySnapshot.forEach((doc) => { targetUid = doc.id; });
         if (targetUid === currentUid) return alert("自分自身は追加できません。");
-
         await updateDoc(doc(db, "users", currentUid), { friends: arrayUnion(targetUid) });
         alert(`フレンドを追加しました！`);
         friendSearchInput.value = "";
-      } catch (error) {
-        console.error(error);
-      }
+      } catch (error) { console.error(error); }
     });
 
     function setupFriendsListener() {
@@ -412,7 +511,6 @@
           friendListContainer.innerHTML = "<div class='friend-item'>フレンドはいません</div>";
           return;
         }
-
         let friendDataList = [];
         for (const fUid of friendUids) {
           const fSnap = await getDoc(doc(db, "users", fUid));
@@ -422,40 +520,37 @@
             if (fData.lastActive) {
               const lastActiveTime = fData.lastActive.toDate().getTime();
               const nowTime = new Date().getTime();
-              if (nowTime - lastActiveTime < 30000) {
-                isOnline = true;
-              }
+              if (nowTime - lastActiveTime < 30000) { isOnline = true; }
             }
             fData.calculatedOnline = isOnline;
             friendDataList.push(fData);
           }
         }
-
         friendDataList.sort((a, b) => b.calculatedOnline - a.calculatedOnline);
-
         friendListContainer.innerHTML = "";
         friendDataList.forEach((fData) => {
           const itemDiv = document.createElement("div");
           itemDiv.className = "friend-item";
           
+          // 名前部分をクリック可能なリンクに変更
           itemDiv.innerHTML = `
             <div>
-              👤 ${fData.username}#${fData.userTag}
-              <span class="status-badge ${fData.calculatedOnline ? 'status-online' : 'status-offline'}">
-                ${fData.calculatedOnline ? '● online' : '○ offline'}
-              </span>
+              👤 <span class="friend-name-link" id="link-${fData.uid}">${fData.username}</span>#${fData.userTag}
+              <span class="status-badge ${fData.calculatedOnline ? 'status-online' : 'status-offline'}">${fData.calculatedOnline ? '● online' : '○ offline'}</span>
             </div>
           `;
-
           if (fData.calculatedOnline) {
             const inviteBtn = document.createElement("button");
-            inviteBtn.className = "btn-invite";
-            inviteBtn.textContent = "対戦申込";
+            inviteBtn.className = "btn-invite"; inviteBtn.textContent = "対戦申込";
             inviteBtn.addEventListener("click", () => sendMatchInvite(fData.uid, fData.username));
             itemDiv.appendChild(inviteBtn);
           }
-
           friendListContainer.appendChild(itemDiv);
+
+          // イベントリスナーのバインド
+          document.getElementById(`link-${fData.uid}`).addEventListener("click", () => {
+            showFriendStats(fData.uid, fData.username, fData.userTag);
+          });
         });
       });
     }
@@ -463,104 +558,78 @@
     function generateRoomId() {
       const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
       let result = "";
-      for (let i = 0; i < 4; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
+      for (let i = 0; i < 4; i++) { result += chars.charAt(Math.floor(Math.random() * chars.length)); }
       return result;
     }
 
     async function sendMatchInvite(targetUid, targetName) {
       const mySnap = await getDoc(doc(db, "users", currentUid));
       const myName = mySnap.exists() ? mySnap.data().username : "フレンド";
-
       if (!confirm(`${targetName} さんに対戦を申し込みますか？`)) return;
-      
       let roomId = generateRoomId();
       let roomRef = doc(db, "rooms", roomId);
       let roomSnap = await getDoc(roomRef);
       while (roomSnap.exists()) {
-        roomId = generateRoomId();
-        roomRef = doc(db, "rooms", roomId);
-        roomSnap = await getDoc(roomRef);
+        roomId = generateRoomId(); roomRef = doc(db, "rooms", roomId); roomSnap = await getDoc(roomRef);
       }
-
       await setDoc(roomRef, {
-        roomId: roomId,
-        status: "waiting",
-        players: [currentUid],
-        createdAt: new Date(),
-        lastWord: "しりとり",
-        currentTurn: currentUid,
-        shingiCounts: { [currentUid]: 0 }
+        roomId: roomId, status: "waiting", players: [currentUid], createdAt: serverTimestamp(), lastWord: "しりとり", currentTurn: currentUid, shingiCounts: { [currentUid]: 0 }
       });
-
       const inviteRef = doc(collection(db, "users", targetUid, "invites"));
-      await setDoc(inviteRef, {
-        roomId: roomId,
-        hostName: myName,
-        createdAt: new Date()
-      });
-
-      activeRoomId = roomId;
-      roomTitle.textContent = `部屋ID: ${roomId}`;
-      showScreen("game");
-      watchRoom(roomId);
+      await setDoc(inviteRef, { roomId: roomId, hostName: myName, createdAt: new Date() });
+      isFriendMatchMode = true; activeRoomId = roomId;
+      roomTitle.textContent = "フレンドマッチ待機中";
+      gameStatus.textContent = `${targetName} さんの参加を受け付け中...`;
+      showScreen("game"); watchRoom(roomId);
     }
 
     function setupInviteListener() {
       if (unsubscribeInvite) unsubscribeInvite();
-      
       const invitesRef = collection(db, "users", currentUid, "invites");
       unsubscribeInvite = onSnapshot(invitesRef, (snapshot) => {
         snapshot.docChanges().forEach(async (change) => {
           if (change.type === "added") {
             const inviteData = change.doc.data();
-            // 大文字に統一して保管
             incomingRoomId = inviteData.roomId.toUpperCase();
-
             await deleteDoc(change.doc.ref);
-
             const roomSnap = await getDoc(doc(db, "rooms", incomingRoomId));
             if (!roomSnap.exists()) return;
-
             inviteMsgText.textContent = `⚔️ ${inviteData.hostName} から対戦申し込みが届きました！`;
+            btnDeclineInvite.setAttribute("data-room-id", incomingRoomId);
+            btnDeclineInvite.setAttribute("data-host-name", inviteData.hostName);
             inviteZone.classList.remove("hidden");
           }
         });
       });
     }
 
-    // ─── 修正：4桁入力を完全にスルーして直接部屋に入る処理 ───
     btnAcceptInvite.addEventListener("click", async () => {
       if (!incomingRoomId) return;
       inviteZone.classList.add("hidden");
-
       const roomRef = doc(db, "rooms", incomingRoomId);
       const roomSnap = await getDoc(roomRef);
       if (!roomSnap.exists()) return alert("部屋が既に解散されています。");
-
       const roomData = roomSnap.data();
       const updatedShingiCounts = { ...roomData.shingiCounts, [currentUid]: 0 };
-      
-      // 相手の部屋データを更新（自分をプレイヤー[1]に加える ＆ 試合開始）
-      await updateDoc(roomRef, {
-        players: arrayUnion(currentUid),
-        shingiCounts: updatedShingiCounts,
-        status: "playing"
-      });
-      
-      // コピー元の一時変数をアクティブ部屋IDへ
-      activeRoomId = incomingRoomId;
-      roomTitle.textContent = `部屋ID: ${incomingRoomId}`;
-      
-      // 4桁入力をスキップし、直接ゲーム画面に切り替えてリアルタイム同期を開始！
-      showScreen("game");
-      watchRoom(incomingRoomId);
+      await updateDoc(roomRef, { players: arrayUnion(currentUid), shingiCounts: updatedShingiCounts, status: "playing" });
+      isFriendMatchMode = true; activeRoomId = incomingRoomId;
+      roomTitle.textContent = "フレンドマッチ";
+      showScreen("game"); watchRoom(incomingRoomId);
       incomingRoomId = null;
     });
 
-    btnDeclineInvite.addEventListener("click", () => {
+    btnDeclineInvite.addEventListener("click", async () => {
+      const targetRoomId = btnDeclineInvite.getAttribute("data-room-id");
       inviteZone.classList.add("hidden");
+      if (targetRoomId) {
+        const roomRef = doc(db, "rooms", targetRoomId);
+        const roomSnap = await getDoc(roomRef);
+        if (roomSnap.exists()) {
+          const mySnap = await getDoc(doc(db, "users", currentUid));
+          const myName = mySnap.exists() ? mySnap.data().username : "相手";
+          await updateDoc(roomRef, { status: "finished", winnerName: "メニュー", finishReason: `REFUSED:${myName}` });
+        }
+      }
       incomingRoomId = null;
     });
 
@@ -569,34 +638,23 @@
 
     document.getElementById("btn-create-room").addEventListener("click", async () => {
       if (!currentUid) return alert("ログインしてください");
+      isFriendMatchMode = false;
       let roomId = generateRoomId();
       let roomRef = doc(db, "rooms", roomId);
       try {
         let roomSnap = await getDoc(roomRef);
-        while (roomSnap.exists()) {
-          roomId = generateRoomId();
-          roomRef = doc(db, "rooms", roomId);
-          roomSnap = await getDoc(roomRef);
-        }
+        while (roomSnap.exists()) { roomId = generateRoomId(); roomRef = doc(db, "rooms", roomId); roomSnap = await getDoc(roomRef); }
         await setDoc(roomRef, {
-          roomId: roomId,
-          status: "waiting",
-          players: [currentUid],
-          createdAt: new Date(),
-          lastWord: "しりとり",
-          currentTurn: currentUid,
-          shingiCounts: { [currentUid]: 0 }
+          roomId: roomId, status: "waiting", players: [currentUid], createdAt: serverTimestamp(), lastWord: "しりとり", currentTurn: currentUid, shingiCounts: { [currentUid]: 0 }
         });
-        activeRoomId = roomId;
-        roomTitle.textContent = `部屋ID: ${roomId}`;
-        showScreen("game");
-        watchRoom(roomId);
+        activeRoomId = roomId; roomTitle.textContent = `部屋ID: ${roomId}`; showScreen("game"); watchRoom(roomId);
       } catch (error) { console.error(error); }
     });
 
     document.getElementById("btn-join-room").addEventListener("click", async () => {
       if (!currentUid) return alert("ログインしてください");
-      const targetRoomId = roomIdInput.value.trim().toUpperCase(); // 大文字統一
+      isFriendMatchMode = false;
+      const targetRoomId = roomIdInput.value.trim().toUpperCase();
       if (!targetRoomId || targetRoomId.length !== 4) return alert("正しい4桁の部屋IDを入力してください");
       const roomRef = doc(db, "rooms", targetRoomId);
       try {
@@ -605,30 +663,17 @@
         const roomData = roomSnap.data();
         if (roomData.status !== "waiting" || roomData.players.length >= 2) return alert("入れません。");
         if (roomData.players.includes(currentUid)) return alert("すでに入室しています。");
-
         const updatedShingiCounts = { ...roomData.shingiCounts, [currentUid]: 0 };
-        await updateDoc(roomRef, {
-          players: arrayUnion(currentUid),
-          shingiCounts: updatedShingiCounts,
-          status: "playing"
-        });
-        activeRoomId = targetRoomId;
-        roomTitle.textContent = `部屋ID: ${targetRoomId}`;
-        showScreen("game");
-        watchRoom(targetRoomId);
+        await updateDoc(roomRef, { players: arrayUnion(currentUid), shingiCounts: updatedShingiCounts, status: "playing" });
+        activeRoomId = targetRoomId; roomTitle.textContent = `部屋ID: ${targetRoomId}`; showScreen("game"); watchRoom(targetRoomId);
       } catch (error) { console.error(error); }
     });
 
     function startLocalTimer(roomData) {
-      clearInterval(countdownInterval);
-      remainingTime = 15;
-      timerBox.textContent = `残り時間: ${remainingTime}秒`;
-
+      clearInterval(countdownInterval); remainingTime = 15; timerBox.textContent = `残り時間: ${remainingTime}秒`;
       if (roomData.currentTurn === currentUid) {
         countdownInterval = setInterval(async () => {
-          remainingTime--;
-          timerBox.textContent = `残り時間: ${remainingTime}秒`;
-
+          remainingTime--; timerBox.textContent = `残り時間: ${remainingTime}秒`;
           if (remainingTime <= 0) {
             clearInterval(countdownInterval);
             const roomRef = doc(db, "rooms", activeRoomId);
@@ -638,31 +683,34 @@
               const enemyUid = roomData.players.find(uid => uid !== currentUid);
               const enemySnap = await getDoc(doc(db, "users", enemyUid));
               const enemyName = enemySnap.exists() ? enemySnap.data().username : "対戦相手";
-
-              await updateDoc(roomRef, {
-                status: "finished",
-                winnerName: enemyName,
-                finishReason: `${myName} さんの思考時間が15秒を超えた（時間切れ）ため`
-              });
+              await updateDoc(roomRef, { status: "finished", winnerName: enemyName, winnerUid: enemyUid, finishReason: `${myName} さんの思考時間が15秒を超えた（時間切れ）ため` });
             } catch (e) { console.error(e); }
           }
         }, 1000);
-      } else {
-        timerBox.textContent = "相手の思考中...";
-      }
+      } else { timerBox.textContent = "相手の思考中..."; }
     }
 
     function watchRoom(roomId) {
       if (unsubscribeRoom) unsubscribeRoom();
-      unsubscribeRoom = onSnapshot(doc(db, "rooms", roomId), (snapshot) => {
+      unsubscribeRoom = onSnapshot(doc(db, "rooms", roomId), async (snapshot) => {
         if (!snapshot.exists()) return;
         const data = snapshot.data();
+        
+        // プレイヤー情報を随時更新キープ（履歴記録用）
+        if (data.players) currentRoomPlayers = data.players;
+
         if (data.status === "waiting") {
-          gameStatus.textContent = "相手の参加を待っています...（このIDを友達に伝えてね）";
+          if (isFriendMatchMode) { roomTitle.textContent = "フレンドマッチ待機中"; } 
+          else if (roomId.startsWith("FREE_")) { roomTitle.textContent = "自動マッチング待機中"; gameStatus.textContent = "誰かが参加するのを待っています..."; }
+          else { roomTitle.textContent = `部屋ID: ${data.roomId}`; gameStatus.textContent = "相手の参加を待っています..."; }
           shiritoriArea.classList.add("hidden");
           clearInterval(countdownInterval);
-        } else if (data.status === "playing") {
+        } 
+        else if (data.status === "playing") {
           gameStatus.textContent = "試合中！";
+          if (isFriendMatchMode) { roomTitle.textContent = "フレンドマッチ"; } 
+          else if (roomId.startsWith("FREE_")) { roomTitle.textContent = "フリー自動対戦"; }
+          else { roomTitle.textContent = `部屋ID: ${data.roomId}`; }
           shiritoriArea.classList.remove("hidden");
           currentWord.textContent = data.lastWord || "しりとり";
           const myUsedShingi = data.shingiCounts && data.shingiCounts[currentUid] ? data.shingiCounts[currentUid] : 0;
@@ -670,23 +718,37 @@
           shingiCounter.textContent = `審議残り: ${shingiRemaining >= 0 ? shingiRemaining : 0}回`;
 
           if (data.currentTurn === currentUid) {
-            turnIndicator.textContent = "あなたの番です！";
-            turnIndicator.className = "turn-badge my-turn";
-            shiritoriInput.disabled = false;
-            btnSendWord.disabled = false;
-            btnShingi.disabled = true;
+            turnIndicator.textContent = "あなたの番です！"; turnIndicator.className = "turn-badge my-turn";
+            shiritoriInput.disabled = false; btnSendWord.disabled = false; btnShingi.disabled = true;
           } else {
-            turnIndicator.textContent = "相手の番です...";
-            turnIndicator.className = "turn-badge enemy-turn";
-            shiritoriInput.disabled = true;
-            btnSendWord.disabled = true;
-            btnShingi.disabled = false;
+            turnIndicator.textContent = "相手の番です..."; turnIndicator.className = "turn-badge enemy-turn";
+            shiritoriInput.disabled = true; btnSendWord.disabled = true; btnShingi.disabled = false;
           }
           startLocalTimer(data);
-        } else if (data.status === "finished") {
+        } 
+        else if (data.status === "finished") {
           clearInterval(countdownInterval);
-          alert(`ゲーム終了！ 勝者: ${data.winnerName} 👑\n理由: ${data.finishReason}`);
           if (unsubscribeRoom) unsubscribeRoom();
+
+          if (data.finishReason && data.finishReason.startsWith("REFUSED:")) {
+            const refuserName = data.finishReason.split(":")[1];
+            alert(`対戦申し込みを辞退されました。`);
+          } else {
+            alert(`ゲーム終了！ 勝者: ${data.winnerName} 👑\n理由: ${data.finishReason}`);
+            
+            // ─── 新設：勝敗が決まった段階で、1試合1回だけ履歴コレクション（histories）に保存 ───
+            // 自分がホスト（配列の先頭プレイヤー）の時だけ書き込むことで、重複保存を防ぐ
+            if (currentRoomPlayers[0] === currentUid && currentRoomPlayers.length === 2) {
+              try {
+                await setDoc(doc(collection(db, "histories")), {
+                  uids: currentRoomPlayers,
+                  winnerUid: data.winnerUid || (data.winnerName === "対戦相手" ? currentRoomPlayers[1] : currentUid), // 推定補完
+                  reason: data.finishReason,
+                  timestamp: serverTimestamp()
+                });
+              } catch (err) { console.error("履歴書き込み失敗:", err); }
+            }
+          }
           showScreen("menu");
         }
       });
@@ -696,7 +758,6 @@
       let input = shiritoriInput.value.trim();
       if (!input) return;
       if (!/^[ぁ-んー]+$/.test(input)) return alert("ひらがなだけで入力してください！");
-
       const roomRef = doc(db, "rooms", activeRoomId);
       try {
         const roomSnap = await getDoc(roomRef);
@@ -707,21 +768,15 @@
         if (lastWord && lastChar !== input.charAt(0)) return alert(`「${lastChar}」から始まる単語を入力してください！`);
 
         clearInterval(countdownInterval);
+        const enemyUid = roomData.players.find(uid => uid !== currentUid);
 
         if (input.slice(-1) === "ん") {
-          const mySnap = await getDoc(doc(db, "users", currentUid));
-          const myName = mySnap.exists() ? mySnap.data().username : "相手";
-          const enemyUid = roomData.players.find(uid => uid !== currentUid);
           const enemySnap = await getDoc(doc(db, "users", enemyUid));
           const enemyName = enemySnap.exists() ? enemySnap.data().username : "対戦相手";
-
           await updateDoc(roomRef, {
-            status: "finished",
-            winnerName: enemyName,
-            finishReason: `${myName} さんが「ん」のつく単語を送信したため`
+            status: "finished", winnerName: enemyName, winnerUid: enemyUid, finishReason: `「ん」のつく単語を送信したため`
           });
-          shiritoriInput.value = "";
-          return;
+          shiritoriInput.value = ""; return;
         }
         const nextTurnUid = roomData.players.find(uid => uid !== currentUid);
         await updateDoc(roomRef, { lastWord: input, currentTurn: nextTurnUid, lastSenderUid: currentUid });
@@ -738,27 +793,17 @@
         const mySnap = await getDoc(doc(db, "users", currentUid));
         const myName = mySnap.exists() ? mySnap.data().username : "あなた";
         const enemyUid = roomData.players.find(uid => uid !== currentUid);
-        const enemySnap = await getDoc(doc(db, "users", enemyUid));
-        const enemyName = enemySnap.exists() ? enemySnap.data().username : "対戦相手";
 
         if (currentShingiCount >= 10) {
-          alert("ペナルティ負けになります！");
-          clearInterval(countdownInterval);
-          await updateDoc(roomRef, {
-            status: "finished",
-            winnerName: enemyName,
-            finishReason: `${myName} さんが上限を超えて審議を繰り返したため`
-          });
+          alert("ペナルティ負けになります！"); clearInterval(countdownInterval);
+          await updateDoc(roomRef, { status: "finished", winnerName: "対戦相手", winnerUid: enemyUid, finishReason: `上限を超えて審議を繰り返したため` });
           return;
         }
         if (!confirm(`審議しますか？`)) return;
         clearInterval(countdownInterval);
         const updatedCounts = { ...roomData.shingiCounts, [currentUid]: currentShingiCount + 1 };
         await updateDoc(roomRef, {
-          shingiCounts: updatedCounts,
-          status: "finished",
-          winnerName: myName,
-          finishReason: `出された単語「${roomData.lastWord}」がリアル審議により無効となったため`
+          shingiCounts: updatedCounts, status: "finished", winnerName: myName, winnerUid: currentUid, finishReason: `出された単語「${roomData.lastWord}」がリアル審議により無効となったため`
         });
       } catch (error) { console.error(error); }
     });
@@ -771,13 +816,7 @@
         const roomSnap = await getDoc(roomRef);
         const roomData = roomSnap.data();
         const enemyUid = roomData.players.find(uid => uid !== currentUid);
-        const enemySnap = await getDoc(doc(db, "users", enemyUid));
-        const enemyName = enemySnap.exists() ? enemySnap.data().username : "対戦相手";
-        await updateDoc(roomRef, {
-          status: "finished",
-          winnerName: enemyName,
-          finishReason: `対戦相手がリタイア（降参）したため`
-        });
+        await updateDoc(roomRef, { status: "finished", winnerName: "対戦相手", winnerUid: enemyUid, finishReason: `対戦相手がリタイア（降参）したため` });
       } catch (error) { console.error(error); }
     });
 
@@ -788,12 +827,7 @@
     });
 
     function showScreen(screenType) {
-      loginScreen.classList.add("hidden");
-      registerScreen.classList.add("hidden");
-      menuScreen.classList.add("hidden");
-      gameScreen.classList.add("hidden");
-      friendScreen.classList.add("hidden");
-
+      loginScreen.classList.add("hidden"); registerScreen.classList.add("hidden"); menuScreen.classList.add("hidden"); gameScreen.classList.add("hidden"); friendScreen.classList.add("hidden");
       if (screenType === "login") loginScreen.classList.remove("hidden");
       if (screenType === "register") registerScreen.classList.remove("hidden");
       if (screenType === "menu") menuScreen.classList.remove("hidden");
