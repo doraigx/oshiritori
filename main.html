@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>しりとりポータル - フルカードレイアウト版</title>
+  <title>しりとりポータル - 審議ボタン完全修正版</title>
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -16,7 +16,6 @@
       padding: 20px;
       box-sizing: border-box;
     }
-    /* 全体を包むメインのコンテナ */
     .container {
       width: 100%;
       max-width: 450px;
@@ -24,7 +23,6 @@
       box-sizing: border-box;
     }
     
-    /* ─── PC向け大画面レイアウト（2カラム） ─── */
     @media (min-width: 850px) {
       .container {
         max-width: 1000px;
@@ -41,7 +39,6 @@
     h2 { text-align: center; color: #333; }
     h3 { color: #444; text-align: left; margin-top: 0; margin-bottom: 16px; font-size: 18px; font-weight: bold; }
     
-    /* ─── 新設：独立した各カードのスタイル ─── */
     .game-card {
       background: white;
       padding: 24px;
@@ -79,7 +76,6 @@
     }
     .hidden { display: none; }
     
-    /* ユーザー情報・ステータス周り */
     .user-info { margin-bottom: 12px; font-weight: bold; color: #333; display: flex; justify-content: space-between; align-items: center; font-size: 16px; }
     .status-select-zone { font-size: 14px; color: #666; display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
     .status-select-zone select { margin-bottom: 0; width: auto; padding: 6px 10px; font-size: 14px; }
@@ -92,7 +88,7 @@
     .flex-group input { margin-bottom: 0; flex: 2; }
     .flex-group button { flex: 1; padding: 12px 10px; font-size: 14px; }
 
-    /* しりとり画面用 */
+    /* しりとり用 */
     .word-display { font-size: 32px; font-weight: bold; color: #333; margin: 20px 0; background: #f0f4f8; padding: 15px; border-radius: 8px; text-align: center; }
     .turn-badge { display: inline-block; padding: 6px 12px; border-radius: 20px; font-size: 14px; font-weight: bold; margin-bottom: 15px; text-align: center; }
     .my-turn { background-color: #e6f4ea; color: #137333; }
@@ -112,9 +108,9 @@
     .btn-invite { background-color: #34a853; font-size: 12px; padding: 6px 10px; width: auto; border-radius: 4px; }
     .invite-alert-box { background-color: #fff3cd; border: 2px dashed #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px; color: #856404; text-align: left; }
 
-    /* 戦績・履歴のカード内スタイル */
+    /* 戦績・履歴 */
     .stats-display { font-size: 28px; font-weight: bold; color: #333; text-align: center; margin: 10px 0; }
-    .stats-sub { font-size: 14px; color: #666; text-align: center; block-size: auto; }
+    .stats-sub { font-size: 14px; color: #666; text-align: center; }
     .history-card { background: #fafafa; border: 1px solid #eef0f4; padding: 12px; border-radius: 6px; margin-bottom: 8px; font-size: 13px; }
     .history-time { display: block; font-size: 11px; color: #aaa; margin-bottom: 4px; }
     .win-text { color: #137333; font-weight: bold; }
@@ -153,16 +149,13 @@
       <button id="btn-register">登録して次へ</button>
     </div>
 
-    <!-- 3. ログイン完了後のメインメニュー画面 (各パーツをカードに独立化) -->
+    <!-- 3. メインメニュー画面 -->
     <div id="menu-screen" class="hidden">
       <h1 style="margin-bottom: 30px;">しりとりポータル</h1>
       
       <div class="pc-layout-grid">
-        
-        <!-- 左側カラム：操作系カード群 -->
         <div class="pc-left-col">
-          
-          <!-- カード①：プレイヤー情報 -->
+          <!-- プレイヤー情報 -->
           <div class="game-card">
             <h3>👤 プレイヤー情報</h3>
             <div class="user-info">
@@ -180,7 +173,7 @@
             <button id="btn-to-friend" style="background-color: #9c27b0; padding: 12px;">👥 フレンド・オンラインリスト</button>
           </div>
 
-          <!-- カード②：対人モード -->
+          <!-- 対人モード -->
           <div class="game-card">
             <h3>⚔️ 対人モード</h3>
             <button id="btn-create-room" style="background-color: #f4b400; margin-bottom: 16px;">新しく部屋を作る（4桁ID発行）</button>
@@ -190,37 +183,32 @@
             </div>
           </div>
           
-          <!-- カード③：フリーモード -->
+          <!-- フリーモード -->
           <div class="game-card">
             <h3>🌍 フリーモード</h3>
             <p style="font-size: 14px; color:#666; margin-top:0; margin-bottom:12px;">誰でも入れる公開部屋を探すか、待機部屋を作成します。</p>
             <button id="btn-free" style="background-color: #34a853;">オートマッチング（自動対戦）</button>
           </div>
-          
         </div>
 
-        <!-- 右側カラム：データ表示系カード群 -->
         <div class="pc-right-col">
-          
-          <!-- カード④：累計戦績 -->
+          <!-- 累計戦績 -->
           <div class="game-card">
             <h3>🏆 累計戦績</h3>
             <div class="stats-display" id="total-stats-text">0勝 0敗</div>
             <div class="stats-sub" id="total-wr-text">勝率: --%</div>
           </div>
 
-          <!-- カード⑤：直近の勝敗履歴 -->
+          <!-- 直近の勝敗履歴 -->
           <div class="game-card">
             <h3>📊 直近の勝敗履歴 (5件)</h3>
             <div id="history-list-container">履歴はありません</div>
           </div>
-          
         </div>
-
       </div>
     </div>
 
-    <!-- 5. フレンド管理・オンライン画面 -->
+    <!-- 5. フレンド管理画面 -->
     <div id="friend-screen" class="hidden">
       <div class="game-card" style="margin-bottom: 20px; text-align: center;">
         <h2>フレンド・オンライン</h2>
@@ -384,17 +372,6 @@
       }
     });
 
-    document.getElementById("btn-login").addEventListener("click", async () => {
-      try {
-        loadingStatus.textContent = "ログイン認証中...";
-        await signInWithPopup(auth, provider);
-      } catch (error) {
-        console.error(error);
-        loadingStatus.textContent = "";
-        alert("ログインに失敗しました。");
-      }
-    });
-
     async function checkUserRegistered(uid) {
       const userRef = doc(db, "users", uid);
       const userSnap = await getDoc(userRef);
@@ -494,7 +471,6 @@
       }, 10000);
     }
 
-    // ─── 修正：履歴読み込みと同時に「累計戦績」をカウント・表示 ───
     async function loadGlobalHistory() {
       try {
         const historyRef = collection(db, "histories");
@@ -515,17 +491,14 @@
           snapshot.forEach(doc => { 
             const data = doc.data();
             rawList.push(data); 
-            // 累計戦績の算出
             if (data.winnerUid === currentUid) { wins++; } else { losses++; }
           });
 
-          // 戦績カードへの反映
           totalStatsText.textContent = `${wins}勝 ${losses}敗`;
           const totalGames = wins + losses;
           const winRate = totalGames > 0 ? Math.round((wins / totalGames) * 100) : 0;
           totalWrText.textContent = `勝率: ${winRate}% (総試合数: ${totalGames}戦)`;
 
-          // 履歴リストのソートと成形
           rawList.sort((a, b) => {
             const timeA = a.timestamp ? a.timestamp.toDate().getTime() : 0;
             const timeB = b.timestamp ? b.timestamp.toDate().getTime() : 0;
@@ -601,7 +574,7 @@
           const roomData = targetRoomDoc.data();
           
           if (roomData.players.length >= 2 || roomData.status !== "waiting") {
-            // 先を越された場合
+            // パス
           } else {
             const updatedShingiCounts = { ...roomData.shingiCounts, [currentUid]: 0 };
             await updateDoc(doc(db, "rooms", roomId), {
@@ -919,12 +892,15 @@
           const shingiRemaining = 10 - myUsedShingi;
           shingiCounter.textContent = `審議残り: ${shingiRemaining >= 0 ? shingiRemaining : 0}回`;
 
+          // ─── 【重要修正】審議ボタンの有効・無効化の条件を正しいロジックに反転 ───
           if (data.currentTurn === currentUid) {
             turnIndicator.textContent = "あなたの番です！"; turnIndicator.className = "turn-badge my-turn";
-            shiritoriInput.disabled = false; btnSendWord.disabled = false; btnShingi.disabled = true;
+            shiritoriInput.disabled = false; btnSendWord.disabled = false; 
+            btnShingi.disabled = false; // 自分の番（相手が打ち終わった直後）だからこそ審議できる！
           } else {
             turnIndicator.textContent = "相手の番です..."; turnIndicator.className = "turn-badge enemy-turn";
-            shiritoriInput.disabled = true; btnSendWord.disabled = true; btnShingi.disabled = false;
+            shiritoriInput.disabled = true; btnSendWord.disabled = true; 
+            btnShingi.disabled = true;  // 相手の入力待ちは、自分が送信した直後なので審議できない
           }
           startLocalTimer(data);
         } 
